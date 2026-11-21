@@ -60,6 +60,8 @@ total    = subtotal − discount + platformFee + taxes
 
 ## API reference (`/api/v1`)
 
+Full request/response examples for every endpoint: **[API.md](API.md)**.
+
 Responses are the JSON payloads from the contract (no envelope). Errors look like
 `{ "success": false, "message": "...", "errors"?: [...] }`. Paged admin lists return an array and
 the full count in the `X-Total-Count` header (`?limit=&skip=`).
@@ -171,6 +173,8 @@ Each feature follows **route → controller → service → repository**. See [.
 for the coding standards.
 
 ## Quick start
+
+New Mac? Follow **[SETUP_MACOS.md](SETUP_MACOS.md)** for installing PostgreSQL and Node step by step.
 
 ```bash
 npm install
