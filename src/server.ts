@@ -8,6 +8,16 @@ import { BookingSweeperJob } from './jobs/booking-sweeper.job';
 
 const SHUTDOWN_TIMEOUT_MS = 10000;
 
+// "postgresql://user:secret@host:5432/db?x" -> "host:5432/db" (never print credentials).
+const describeDatabaseUrl = (url: string): string => {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.hostname}:${parsed.port || 5432}${parsed.pathname}`;
+  } catch {
+    return 'the configured DATABASE_URL';
+  }
+};
+
 class Server {
   private readonly port: number;
   private serverInstance: HttpServer | undefined;
@@ -20,8 +30,22 @@ class Server {
     this.sweeper = new BookingSweeperJob(container.bookingRepository);
   }
 
-  // Start the server
-  public start(): void {
+  // Start the server once the database answers; fail fast with a readable message otherwise.
+  public async start(): Promise<void> {
+    try {
+      await this.prisma.client.$queryRaw`SELECT 1`;
+    } catch (error) {
+      const target = describeDatabaseUrl(env.DATABASE_URL);
+      console.error(
+        `❌ Cannot connect to PostgreSQL at ${target}.\n` +
+          '   Make sure the PostgreSQL server is installed and running, the database exists,\n' +
+          '   and DATABASE_URL in .env is correct. Then run: npx prisma migrate deploy\n' +
+          `   Cause: ${error instanceof Error ? error.message.split('\n').pop() : String(error)}`,
+      );
+      await this.prisma.disconnect().catch(() => undefined);
+      process.exit(1);
+    }
+
     this.serverInstance = app.listen(this.port, () => {
       console.info(`Server running at http://localhost:${this.port}`);
       this.sweeper.start();
@@ -91,4 +115,4 @@ class Server {
 
 // Initialize and start the server
 const server = new Server(env.PORT);
-server.start();
+void server.start();

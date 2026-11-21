@@ -1,8 +1,6 @@
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 
-import { ValidationMessages } from '../../../constants/messages';
-import { ApiError } from '../../../utils/api-error.util';
 import { sendData, sendList } from '../../../utils/response.util';
 import { BookingService } from '../../booking/services/booking.service';
 import {
@@ -11,6 +9,7 @@ import {
   AdminCreateBookingInput,
   AdminRescheduleBookingInput,
   MarkPaidInput,
+  PaymentFailedInput,
 } from '../../booking/types/booking.types';
 import { NotificationService } from '../../notification/services/notification.service';
 import { SmsQuery } from '../../notification/types/sms.types';
@@ -23,36 +22,20 @@ import {
 } from '../../venue/types/venue.types';
 import { VisitorService } from '../../visitor/services/visitor.service';
 import { CustomersQuery } from '../../visitor/types/visitor.types';
-import { AdminAuthService } from '../services/admin-auth.service';
 import { AdminDashboardService } from '../services/admin-dashboard.service';
-import { DashboardQuery, StaffLoginInput } from '../types/admin.types';
+import { DashboardQuery } from '../types/admin.types';
+import { staffIdOf } from './admin-auth.controller';
 
 type IdParams = { id: string };
 
-const staffIdOf = (req: Request): string => {
-  if (!req.userId) throw new ApiError(StatusCodes.UNAUTHORIZED, ValidationMessages.UNAUTHORIZED);
-  return req.userId;
-};
-
 export class AdminController {
   constructor(
-    private readonly adminAuthService: AdminAuthService,
     private readonly dashboardService: AdminDashboardService,
     private readonly venueService: VenueService,
     private readonly bookingService: BookingService,
     private readonly visitorService: VisitorService,
     private readonly notificationService: NotificationService,
   ) {}
-
-  // Auth
-
-  login = async (req: Request<{}, {}, StaffLoginInput>, res: Response): Promise<void> => {
-    sendData(res, await this.adminAuthService.login(req.body.pin));
-  };
-
-  me = async (req: Request, res: Response): Promise<void> => {
-    sendData(res, await this.adminAuthService.me(staffIdOf(req)));
-  };
 
   // Dashboard
 
@@ -147,6 +130,14 @@ export class AdminController {
     );
   };
 
+  // "Simulate failure" / declined card at the counter: releases the slot.
+  paymentFailed = async (
+    req: Request<IdParams, {}, PaymentFailedInput>,
+    res: Response,
+  ): Promise<void> => {
+    sendData(res, await this.bookingService.markPaymentFailed(req.params.id, req.body.reason));
+  };
+
   // New Razorpay order for a pending counter booking (e.g. switch from card to UPI).
   createPaymentOrder = async (
     req: Request<IdParams, {}, Pick<CreateOrderInput, 'method'>>,
@@ -162,6 +153,12 @@ export class AdminController {
       req.query as unknown as CustomersQuery,
     );
     sendList(res, records, total);
+  };
+
+  getCustomer = async (req: Request<{ phone: string }>, res: Response): Promise<void> => {
+    const customer = await this.visitorService.getCustomer(req.params.phone);
+    const bookings = await this.bookingService.listByPhone(req.params.phone);
+    sendData(res, { ...customer, bookings });
   };
 
   listSms = async (req: Request, res: Response): Promise<void> => {

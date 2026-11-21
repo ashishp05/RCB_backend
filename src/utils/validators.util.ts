@@ -46,3 +46,23 @@ export const offerCodeField = z
   .transform(code => code.toUpperCase())
   .optional()
   .or(z.literal('').transform(() => undefined));
+
+// Contract values are snake_case (upi_qr); the Flutter enum names (upiQr) are accepted too.
+const PAYMENT_KIND_ALIASES: Record<string, string> = {
+  upiQr: 'upi_qr',
+  creditCard: 'credit_card',
+  debitCard: 'debit_card',
+};
+
+const withPaymentAliases = (value: unknown) =>
+  typeof value === 'string' ? (PAYMENT_KIND_ALIASES[value] ?? value) : value;
+
+export const paymentKindField = z.preprocess(
+  withPaymentAliases,
+  z.enum(['upi_qr', 'credit_card', 'debit_card', 'cash']),
+);
+
+export const onlinePaymentKindField = z.preprocess(
+  withPaymentAliases,
+  z.enum(['upi_qr', 'credit_card', 'debit_card']),
+);

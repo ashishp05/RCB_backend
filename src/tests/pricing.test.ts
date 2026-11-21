@@ -9,11 +9,15 @@ const offer = (overrides: Partial<Offer>): Offer => ({
   id: 'o1',
   venueId: 'arena',
   code: 'RIVER50',
+  title: 'Riverside special',
   description: '',
   kind: 'flat',
   value: 5_000,
   maxDiscountPaise: null,
   minSubtotalPaise: 0,
+  minHours: 1,
+  weekdaysOnly: false,
+  accent: 'amber',
   active: true,
   validFrom: null,
   validTo: null,
@@ -27,6 +31,7 @@ const base = { hourlyRatePaise: 90_000, additionalChargePaise: 2_000, gstRateBps
 test('contract example: 2h at 900 + 20 fee - RIVER50 = 1770', () => {
   const price = toPriceDto(calculatePrice({ ...base, hours: 2, offer: offer({}) }));
   assert.deepEqual(price, {
+    lines: [],
     subtotal: 1800,
     discount: 50,
     platformFee: 20,
@@ -62,4 +67,12 @@ test('discount never exceeds the subtotal', () => {
   const price = calculatePrice({ ...base, hours: 1, offer: offer({ value: 500_000 }) });
   assert.equal(price.discountPaise, 90_000);
   assert.equal(price.totalPaise, 2_000);
+});
+
+test('price lines list each booked hour', () => {
+  const price = toPriceDto(calculatePrice({ ...base, hours: 2 }), 19);
+  assert.deepEqual(price.lines, [
+    { hour: 19, amount: 900, isPeak: false },
+    { hour: 20, amount: 900, isPeak: false },
+  ]);
 });

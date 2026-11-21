@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { OfferAccents } from '../../../constants/config.constants';
 import { dateField } from '../../../utils/validators.util';
 
 export const slotsQuerySchema = z.object({
@@ -24,12 +25,16 @@ export const updateSettingsSchema = z
   .refine(data => Object.keys(data).length > 0, 'Provide at least one setting to update');
 
 const offerBase = {
+  title: z.string().trim().max(60).optional(),
   description: z.string().trim().max(200).optional(),
   kind: z.enum(['flat', 'percent']),
   // flat: rupees off. percent: percent off (10 = 10%).
   value: z.coerce.number().positive(),
   maxDiscount: z.coerce.number().positive().nullable().optional(),
   minSubtotal: z.coerce.number().min(0).optional(),
+  minHours: z.coerce.number().int().min(1).max(24).optional(),
+  weekdaysOnly: z.boolean().optional(),
+  accent: z.enum(OfferAccents).optional(),
   active: z.boolean().optional(),
   validFrom: z.coerce.date().nullable().optional(),
   validTo: z.coerce.date().nullable().optional(),

@@ -40,10 +40,13 @@ export const envSchema = z.object({
     .default(false),
   DEFAULT_VENUE_ID: z.string().default('arena'),
   PUBLIC_SITE_URL: z.string().url().default('http://localhost:5173'),
-  STAFF_DEMO_PIN: z
+  ADMIN_PANEL_URL: z.string().url().optional(),
+  ADMIN_SEED_NAME: z.string().default('Venue Admin'),
+  ADMIN_SEED_EMAIL: z.string().email().default('admin@riverside.example'),
+  ADMIN_SEED_PASSWORD: z
     .string()
-    .regex(/^\d{4,6}$/, 'STAFF_DEMO_PIN must be 4-6 digits')
-    .default('1234'),
+    .min(8, 'ADMIN_SEED_PASSWORD must be at least 8 characters')
+    .default('Admin@12345'),
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),

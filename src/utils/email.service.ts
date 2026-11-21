@@ -3,7 +3,8 @@ import path from 'path';
 import { APP_NAME } from '../constants/config.constants';
 import { renderEmailTemplate, sendEmail } from './email.helper';
 
-const templatesDirPath = path.join(process.cwd(), 'src/templates');
+// Resolves to src/templates in dev and dist/templates in a build (copied by `npm run build`).
+const templatesDirPath = path.join(__dirname, '..', 'templates');
 const logoUrl = 'https://example.com/assets/images/logo.png';
 
 export interface ForgotPasswordEmailOptions {

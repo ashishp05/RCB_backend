@@ -2,17 +2,22 @@ import { env } from '../../../config/env-config';
 import { toRupees } from '../../../utils/money.util';
 import { todayInVenue } from '../../../utils/time.util';
 import { BookingRepository } from '../../booking/repositories/booking.repository';
+import { BookingService } from '../../booking/services/booking.service';
 import { VenueService } from '../../venue/services/venue.service';
 
 export class AdminDashboardService {
   constructor(
     private readonly bookingRepository: BookingRepository,
+    private readonly bookingService: BookingService,
     private readonly venueService: VenueService,
   ) {}
 
   async summary(venueId: string = env.DEFAULT_VENUE_ID, date: string = todayInVenue()) {
     const venue = await this.venueService.getVenueEntity(venueId);
-    const stats = await this.bookingRepository.statsForDate(venueId, date);
+    const [stats, bookings] = await Promise.all([
+      this.bookingRepository.statsForDate(venueId, date),
+      this.bookingService.listToday(venueId, date),
+    ]);
 
     const status = (name: string) => stats.byStatus.find(row => row.status === name);
     const confirmed = ['upcoming', 'completed'].map(status);
@@ -37,6 +42,8 @@ export class AdminDashboardService {
       })),
       pendingTotal: stats.pendingTotal,
       upcomingTotal: stats.upcomingTotal,
+      // Desk home "Today" list: every non-cancelled booking on the date, by start time.
+      today: bookings,
     };
   }
 

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
-export const onlinePaymentMethod = z.enum(['upi_qr', 'credit_card', 'debit_card']);
+import { onlinePaymentKindField } from '../../../utils/validators.util';
+
+export const onlinePaymentMethod = onlinePaymentKindField;
 
 export const createOrderSchema = z.object({
   bookingId: z.string().trim().min(1),

@@ -9,7 +9,7 @@ The booking API for a box cricket venue, built with **Node.js (>=24)**, **Expres
 - self-bookings paid through Razorpay (UPI QR or card)
 - counter bookings by staff (cash or online)
 - confirmation SMS through MSG91 or Twilio
-- a PIN-protected admin API
+- an admin panel API with email + password sign-in and role-based access
 
 ## How it works
 
@@ -40,7 +40,7 @@ only one can succeed. The other gets `409 That slot is not available.`
 | Hold | Expires after **8 min**. A visitor holds one selection at a time: a new hold replaces the old one. |
 | Pending booking | The visitor has **15 min** to pay, and the timer restarts when a payment order is created. Unpaid bookings are released (`cancelled`, "Payment not completed in time"). |
 | Late payment | If a payment is captured after the booking was released, the slot is taken back when it is still free. Otherwise the payment is refunded and the API returns 409. |
-| Cancellation | Full refund when cancelled **≥ 24 h** before start, otherwise none. Online payments are refunded through Razorpay, and cash refunds are recorded. Staff can override the amount. |
+| Cancellation | **100%** refund when cancelled ≥ 24 h before start, **50%** at ≥ 6 h, otherwise none (the app's FAQ). Online payments are refunded through Razorpay, and cash refunds are recorded. Staff can override the amount. |
 | Reschedule | Same duration, and the price is unchanged. Customers can reschedule up to **2 h** before start. |
 | Completed | A background sweeper (every 60 s) marks `upcoming` bookings `completed` after their last hour (IST). |
 
@@ -52,7 +52,8 @@ percent (`gstRate: 18`).
 
 ```
 subtotal = hourlyRate × hours
-discount = offer (flat ₹ or % with optional cap), never more than subtotal
+discount = offer (flat ₹ or % with optional cap), never more than subtotal.
+           Offers can require min hours and weekdays only (judged on the booked date).
 taxes    = (subtotal − discount + platformFee) × gstRate
 total    = subtotal − discount + platformFee + taxes
 ```
@@ -86,24 +87,50 @@ the full count in the `X-Total-Count` header (`?limit=&skip=`).
 `cancel` and `reschedule` require the booking's mobile number: with the soft visitor identity, the
 phone is the proof of ownership.
 
-### Admin (`Authorization: Bearer <jwt>`)
+### Admin panel (`Authorization: Bearer <jwt>`)
 
-| Method | Route | Notes |
-| :--- | :--- | :--- |
-| `POST` | `/admin/auth/login` | `{ pin }` → `{ token, staffId, name, role }` (rate limited) |
-| `GET` | `/admin/me` · `/admin/dashboard?date=` · `/admin/qr-link` | |
-| `GET`/`PATCH` | `/admin/venues/:id/settings` | `{ hourlyRate, additionalCharge, gstRate, openHour, closeHour, minHours, maxHours, advanceDays }` |
-| `GET`/`POST` | `/admin/venues/:id/offers` | `{ code, kind: flat \| percent, value, maxDiscount?, minSubtotal?, validFrom?, validTo? }` |
-| `PATCH` | `/admin/venues/:id/offers/:offerId` | |
-| `POST` | `/admin/bookings` | Counter booking. Cash confirms immediately; other kinds return `payment` (Razorpay order) |
-| `GET` | `/admin/bookings?from=&to=&status=&channel=&paymentKind=&pitchId=&phone=&search=` | |
-| `GET` | `/admin/bookings/:id` | Includes payments and SMS history |
-| `POST` | `/admin/bookings/:id/mark-paid` | `{ paymentKind?, paymentMethodLabel? }` |
-| `POST` | `/admin/bookings/:id/payment-order` | `{ method }`, new order for a pending booking |
-| `POST` | `/admin/bookings/:id/cancel` | `{ reason?, refundAmount? }` |
-| `POST` | `/admin/bookings/:id/reschedule` | `{ date, startHour, pitchId? }` |
-| `GET` | `/admin/customers?search=` | Visitors with `bookingsCount`, `totalSpent`, `lastBookingAt` |
-| `GET` | `/admin/sms?bookingId=&recipient=&status=` | Every SMS attempt |
+Staff sign in with **email + password**. There are two roles:
+- `admin` can do everything.
+- `staff` gets the counter desk: bookings, walk-ins, customers, SMS log and QR. Staff can view
+  rates and offers but cannot change them.
+
+Every admin request re-checks the account in the database. A token stops working as soon as the
+account is deactivated, its role changes, its password changes, or someone calls `logout-all`.
+After 5 failed logins, the account is locked for 15 minutes.
+
+| Panel screen | Method | Route | Notes |
+| :--- | :--- | :--- | :--- |
+| Login | `POST` | `/admin/auth/login` | `{ email, password }` → `{ token, tokenType, expiresIn, staffId, staff }` |
+| | `POST` | `/admin/auth/forgot-password` | `{ email }`, emails a 30-minute reset link (`ADMIN_PANEL_URL/reset-password?token=`) |
+| | `POST` | `/admin/auth/reset-password` | `{ token, newPassword }` (single use) |
+| Account | `GET` | `/admin/auth/me` | |
+| | `POST` | `/admin/auth/change-password` | `{ currentPassword, newPassword }` → new session (other devices signed out) |
+| | `POST` | `/admin/auth/logout` · `/logout-all` | `logout-all` revokes every token |
+| Desk home | `GET` | `/admin/dashboard?date=` | Stats plus `today[]` bookings |
+| Book walk-in | `POST` | `/admin/bookings` | `{ date, hours[], customerName, customerPhone, paymentKind, paymentMethodLabel?, offerCode? }`. Cash confirms immediately; UPI/card return `payment` (order + `qrString`) |
+| | `POST` | `/admin/bookings/:id/mark-paid` | "Collect cash & confirm" / "Confirm card payment" / "Simulate success" |
+| | `POST` | `/admin/bookings/:id/payment-failed` | "Simulate failure": releases the slot |
+| | `POST` | `/admin/bookings/:id/payment-order` | `{ method }`, new order for a pending booking |
+| All bookings | `GET` | `/admin/bookings?time=all\|upcoming\|past&date=&from=&to=&channel=&paymentKind=&status=&search=` | Array + `X-Total-Count` |
+| Booking detail | `GET` | `/admin/bookings/:id` | Includes payments and SMS history |
+| | `POST` | `/admin/bookings/:id/cancel` | `{ reason?, refundAmount? }` |
+| | `POST` | `/admin/bookings/:id/reschedule` | `{ date, startHour, pitchId? }` |
+| Customers | `GET` | `/admin/customers?search=` | `{ name, phone, count, totalSpent, firstSeen, lastSeen, lastBookingAt }` |
+| | `GET` | `/admin/customers/:phone` | Customer plus their `bookings[]` |
+| Rates & charges | `GET` | `/admin/venues/:id/settings` | Includes the 1-hour `preview` |
+| | `PATCH` | `/admin/venues/:id/settings` | **admin**. `{ hourlyRate, additionalCharge, gstRate, openHour, closeHour, minHours, maxHours, advanceDays }` |
+| Offers | `GET` | `/admin/venues/:id/offers` | |
+| | `POST` · `PATCH` | `/admin/venues/:id/offers[/:offerId]` | **admin**. `{ code, title, description, kind, value, maxDiscount, minHours, weekdaysOnly, accent }` |
+| SMS log | `GET` | `/admin/sms?bookingId=&recipient=&status=` | |
+| Counter QR | `GET` | `/admin/qr-link` | `{ url }` |
+| Staff accounts | `GET` · `POST` | `/admin/staff` | **admin**. `{ name, email, role, password, sendInvite? }` |
+| | `GET` · `PATCH` | `/admin/staff/:id` | **admin**. `{ name?, role?, active? }`. You cannot demote or deactivate yourself or the last admin |
+| | `POST` | `/admin/staff/:id/password` | **admin**. `{ newPassword }`, also clears a lockout |
+
+Passwords need 8+ characters with at least one letter and one digit. `paymentKind` accepts the
+contract values (`upi_qr`, `credit_card`, …) and the Flutter enum names (`upiQr`, `creditCard`, …).
+Booking responses include the Flutter fields `paymentMethod`, `createdBy` (`guest`/`staff`),
+`venueArea` and `price.lines[]`.
 
 ## Integrations
 
@@ -133,11 +160,11 @@ src/
 │   ├── booking/              # Holds, bookings, pricing, cancel/reschedule, counter bookings
 │   ├── payment/              # Razorpay orders, verify, webhook, refunds
 │   ├── notification/         # Confirmation SMS + sms_messages log
-│   └── admin/                # PIN auth, dashboard, admin routes
+│   └── admin/                # Email/password auth, staff accounts, roles, desk APIs
 ├── jobs/booking-sweeper.job.ts
-├── seeds/seed.ts             # Riverside venue, pitch "main", ₹900/h + ₹20, RIVER50, staff PIN
+├── seeds/seed.ts             # Riverside venue, pitch "main", ₹900/h + ₹20, app offers, first admin
 ├── utils/                    # time (IST), money, razorpay, sms providers, validators, ...
-└── tests/                    # Pricing, IST time, Razorpay signature unit tests
+└── tests/                    # Pricing, refund tiers, IST time, Razorpay signature unit tests
 ```
 
 Each feature follows **route → controller → service → repository**. See [.agents/](.agents/AGENTS.md)
@@ -149,7 +176,7 @@ for the coding standards.
 npm install
 cp .env.example .env            # set DATABASE_URL and JWT_SECRET (32+ chars)
 npx prisma migrate deploy       # create tables
-npm run db:seed                 # venue, pricing, RIVER50, staff PIN (STAFF_DEMO_PIN, default 1234)
+npm run db:seed                 # venue, pricing, 4 offers, first admin (ADMIN_SEED_EMAIL / ADMIN_SEED_PASSWORD)
 npm run dev                     # http://localhost:4000/api/v1
 ```
 

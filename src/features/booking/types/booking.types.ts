@@ -11,6 +11,7 @@ import {
   createHoldSchema,
   customerBookingsQuerySchema,
   markPaidSchema,
+  paymentFailedSchema,
   pricePreviewSchema,
   rescheduleBookingSchema,
 } from '../schemas/booking.schema';
@@ -26,6 +27,7 @@ export type AdminBookingsQuery = z.infer<typeof adminBookingsQuerySchema>;
 export type AdminCancelBookingInput = z.infer<typeof adminCancelBookingSchema>;
 export type AdminRescheduleBookingInput = z.infer<typeof adminRescheduleBookingSchema>;
 export type MarkPaidInput = z.infer<typeof markPaidSchema>;
+export type PaymentFailedInput = z.infer<typeof paymentFailedSchema>;
 
 export type OnlinePaymentKind = Exclude<PaymentKind, 'cash'>;
 
@@ -43,7 +45,15 @@ export interface PriceSnapshot {
 }
 
 // API shape (rupees), matching the Flutter price model.
+export interface PriceLineDto {
+  hour: number;
+  amount: number;
+  isPeak: boolean;
+}
+
 export interface PriceDto {
+  // One line per booked hour (Flutter quote model). Empty for previews without a start hour.
+  lines: PriceLineDto[];
   subtotal: number;
   discount: number;
   platformFee: number;
@@ -56,7 +66,7 @@ export interface PriceDto {
 }
 
 export const bookingInclude = Prisma.validator<Prisma.BookingInclude>()({
-  venue: { select: { name: true } },
+  venue: { select: { name: true, area: true } },
   pitch: { select: { name: true } },
 });
 
@@ -66,6 +76,7 @@ export interface BookingDto {
   id: string;
   venueId: string;
   venueName: string;
+  venueArea: string;
   pitchId: string;
   pitchName: string;
   date: string;
@@ -76,7 +87,10 @@ export interface BookingDto {
   status: BookingStatus;
   channel: BookingChannel;
   paymentKind: PaymentKind | null;
+  // Human label, e.g. "Cash" or "UPI QR". paymentMethod is the Flutter field name.
+  paymentMethod: string | null;
   paymentMethodLabel: string | null;
+  createdBy: 'guest' | 'staff';
   price: PriceDto;
   customerName: string;
   customerPhone: string;

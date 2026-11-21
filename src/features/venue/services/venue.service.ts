@@ -1,15 +1,18 @@
 import { Offer } from '@prisma/client';
 import { StatusCodes } from 'http-status-codes';
 
+import { WEEKEND_DAYS } from '../../../constants/config.constants';
 import { ValidationMessages } from '../../../constants/messages';
 import { ApiError } from '../../../utils/api-error.util';
 import { bpsToPercent, percentToBps, toPaise, toRupees } from '../../../utils/money.util';
 import {
   addDaysToDate,
   formatHour,
+  parseDateOnly,
   slotStartInstant,
   todayInVenue,
 } from '../../../utils/time.util';
+import { calculatePrice } from '../../booking/services/pricing.service';
 import { VenueRepository } from '../repositories/venue.repository';
 import {
   CreateOfferInput,
@@ -27,11 +30,19 @@ import {
 export const toOfferDto = (offer: Offer): OfferDto => ({
   id: offer.id,
   code: offer.code,
+  title: offer.title,
   description: offer.description,
+  label:
+    offer.kind === 'flat'
+      ? `₹${toRupees(offer.value).toLocaleString('en-IN')} OFF`
+      : `${bpsToPercent(offer.value)}% OFF`,
   kind: offer.kind,
   value: offer.kind === 'flat' ? toRupees(offer.value) : bpsToPercent(offer.value),
   maxDiscount: offer.maxDiscountPaise === null ? null : toRupees(offer.maxDiscountPaise),
   minSubtotal: toRupees(offer.minSubtotalPaise),
+  minHours: offer.minHours,
+  weekdaysOnly: offer.weekdaysOnly,
+  accent: offer.accent,
   active: offer.active,
   validFrom: offer.validFrom,
   validTo: offer.validTo,
@@ -155,10 +166,25 @@ export class VenueService {
     return { venue, pitchId: pitch.id, date, hours, startHour: hours[0] };
   }
 
-  async getSettings(venueId: string): Promise<SettingsDto & Partial<VenueDto>> {
+  async getSettings(venueId: string) {
     const venue = await this.getVenueEntity(venueId);
+    const settings = venue.settings;
+    // "Customer preview - 1 hour booking example" on the Rates & charges screen.
+    const preview = calculatePrice({
+      hourlyRatePaise: settings?.hourlyRatePaise ?? 0,
+      hours: 1,
+      additionalChargePaise: settings?.additionalChargePaise ?? 0,
+      gstRateBps: settings?.gstRateBps ?? 0,
+    });
     return {
       ...toSettingsDto(venue),
+      preview: {
+        hours: 1,
+        hourlyBookingCharge: toRupees(preview.subtotalPaise),
+        additionalCharge: toRupees(preview.platformFeePaise),
+        taxes: toRupees(preview.taxesPaise),
+        totalPayable: toRupees(preview.totalPaise),
+      },
       openHour: venue.openHour,
       closeHour: venue.closeHour,
       minHours: venue.minHours,
@@ -211,11 +237,15 @@ export class VenueService {
     const offer = await this.venueRepository.createOffer({
       venueId,
       code: input.code,
+      title: input.title ?? '',
       description: input.description ?? '',
       kind: input.kind,
       value: input.kind === 'flat' ? toPaise(input.value) : percentToBps(input.value),
       maxDiscountPaise: input.maxDiscount ? toPaise(input.maxDiscount) : null,
       minSubtotalPaise: toPaise(input.minSubtotal ?? 0),
+      minHours: input.minHours ?? 1,
+      weekdaysOnly: input.weekdaysOnly ?? false,
+      accent: input.accent ?? 'lime',
       active: input.active ?? true,
       validFrom: input.validFrom ?? null,
       validTo: input.validTo ?? null,
@@ -230,7 +260,11 @@ export class VenueService {
     }
     const kind = input.kind ?? existing.kind;
     const offer = await this.venueRepository.updateOffer(offerId, {
+      ...(input.title !== undefined && { title: input.title }),
       ...(input.description !== undefined && { description: input.description }),
+      ...(input.minHours !== undefined && { minHours: input.minHours }),
+      ...(input.weekdaysOnly !== undefined && { weekdaysOnly: input.weekdaysOnly }),
+      ...(input.accent !== undefined && { accent: input.accent }),
       ...(input.kind !== undefined && { kind: input.kind }),
       ...(input.value !== undefined && {
         value: kind === 'flat' ? toPaise(input.value) : percentToBps(input.value),
@@ -247,7 +281,15 @@ export class VenueService {
   }
 
   // Returns an applicable offer for the code or throws a client-facing error.
-  async resolveOffer(venueId: string, code: string, subtotalPaise: number, now = new Date()) {
+  // `date` is the booked day (weekday-only offers are judged on it, not on today).
+  async resolveOffer(
+    venueId: string,
+    code: string,
+    subtotalPaise: number,
+    hours: number,
+    date?: string,
+    now = new Date(),
+  ) {
     const offer = await this.venueRepository.findOfferByCode(venueId, code.toUpperCase());
     const isLive =
       offer &&
@@ -256,6 +298,15 @@ export class VenueService {
       (!offer.validTo || offer.validTo >= now);
     if (!offer || !isLive) {
       throw new ApiError(StatusCodes.BAD_REQUEST, ValidationMessages.INVALID_OFFER);
+    }
+    if (hours < offer.minHours) {
+      throw new ApiError(
+        StatusCodes.BAD_REQUEST,
+        ValidationMessages.offerMinHours(offer.code, offer.minHours),
+      );
+    }
+    if (offer.weekdaysOnly && date && WEEKEND_DAYS.includes(parseDateOnly(date).getUTCDay())) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, ValidationMessages.offerWeekdaysOnly(offer.code));
     }
     if (subtotalPaise < offer.minSubtotalPaise) {
       throw new ApiError(StatusCodes.BAD_REQUEST, ValidationMessages.OFFER_MIN_SUBTOTAL);

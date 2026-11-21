@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 
-import { env } from '../../../config/env-config';
 import { sendData } from '../../../utils/response.util';
 import { BookingService } from '../services/booking.service';
 import {
@@ -26,11 +25,7 @@ export class BookingController {
   };
 
   previewPrice = async (req: Request<{}, {}, PricePreviewInput>, res: Response): Promise<void> => {
-    const { venueId, hours, offerCode } = req.body;
-    sendData(
-      res,
-      await this.bookingService.previewPrice(venueId ?? env.DEFAULT_VENUE_ID, hours, offerCode),
-    );
+    sendData(res, await this.bookingService.previewPrice(req.body));
   };
 
   create = async (req: Request<{}, {}, CreateBookingInput>, res: Response): Promise<void> => {

@@ -7,6 +7,10 @@ export const ResponseMessages = Object.freeze({
 
   // Auth Responses
   LOGIN_SUCCESSFUL: 'Logged in successfully',
+  LOGOUT_SUCCESSFUL: 'Logged out successfully',
+  PASSWORD_CHANGED: 'Password changed successfully',
+  PASSWORD_RESET_EMAIL_SENT: 'If an account exists for this email, a reset link has been sent.',
+  PASSWORD_RESET_DONE: 'Password has been reset. You can log in now.',
 
   // Box cricket Responses
   VISITOR_SAVED: 'Visitor saved',
@@ -38,8 +42,18 @@ export const ValidationMessages = Object.freeze({
   ACCESS_FORBIDDEN: 'Access Forbidden',
 
   // Auth Errors
-  INVALID_PIN: 'Invalid PIN',
+  INVALID_CREDENTIALS: 'Invalid email or password',
   ACCOUNT_INACTIVE: 'Account is inactive or suspended',
+  ACCOUNT_LOCKED: 'Too many failed attempts. Try again in a few minutes.',
+  SESSION_EXPIRED: 'Session expired. Please log in again.',
+  OLD_PASSWORD_INCORRECT: 'Current password is incorrect',
+  PASSWORD_SAME_AS_OLD: 'New password must be different from the current password',
+  RESET_TOKEN_INVALID: 'This reset link is invalid or has expired',
+  STAFF_NOT_FOUND: 'Staff account not found',
+  STAFF_EMAIL_EXISTS: 'A staff account with this email already exists',
+  CANNOT_DEACTIVATE_SELF: 'You cannot deactivate or demote your own account',
+  LAST_ADMIN: 'At least one active admin account is required',
+  PASSWORD_RULES: 'Password must be at least 8 characters and include a letter and a number',
 
   // Input Errors
   ENTER_VALID_NAME: 'Please provide a valid name',
@@ -71,6 +85,10 @@ export const ValidationMessages = Object.freeze({
   RESCHEDULE_SAME_SLOT: 'Pick a different date or time',
   INVALID_OFFER: 'This offer code is not valid',
   OFFER_MIN_SUBTOTAL: 'Booking amount is too low for this offer code',
+  // Verbatim from the app's offer checks.
+  offerMinHours: (code: string, hours: number) =>
+    `${code} needs at least ${hours === 1 ? '1 hr' : `${hours} hrs`} of booking.`,
+  offerWeekdaysOnly: (code: string) => `${code} is valid on weekdays only (Mon-Fri).`,
   ONLINE_PAYMENT_ONLY: 'Cash is only accepted at the counter',
 
   // Payment Errors

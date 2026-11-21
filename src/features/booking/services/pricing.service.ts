@@ -39,7 +39,15 @@ export const calculatePrice = (input: PricingInput): PriceSnapshot => {
   };
 };
 
-export const toPriceDto = (price: PriceSnapshot): PriceDto => ({
+export const toPriceDto = (price: PriceSnapshot, startHour?: number): PriceDto => ({
+  lines:
+    startHour === undefined
+      ? []
+      : Array.from({ length: price.hours }, (_, index) => ({
+          hour: startHour + index,
+          amount: toRupees(price.hourlyRatePaise),
+          isPeak: false,
+        })),
   subtotal: toRupees(price.subtotalPaise),
   discount: toRupees(price.discountPaise),
   platformFee: toRupees(price.platformFeePaise),

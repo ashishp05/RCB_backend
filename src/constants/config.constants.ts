@@ -19,8 +19,11 @@ export const BOOKING_RULES = Object.freeze({
   HOLD_TTL_MINUTES: 8,
   // An unpaid pending booking keeps its slots this long before release.
   PENDING_PAYMENT_TTL_MINUTES: 15,
-  // Full refund when cancelled at least this many hours before start, otherwise none.
-  FREE_CANCELLATION_HOURS: 24,
+  // Refund tiers by hours before start (from the app's FAQ): 100% at 24h+, 50% at 6h+, else none.
+  REFUND_TIERS: [
+    { minHoursBefore: 24, percent: 100 },
+    { minHoursBefore: 6, percent: 50 },
+  ],
   // Reschedule allowed until this many hours before the original start.
   RESCHEDULE_CUTOFF_HOURS: 2,
   // Background sweep for expired holds, unpaid bookings and finished games.
@@ -32,6 +35,18 @@ export const BOOKING_ID_PREFIX = 'BX';
 export const BOOKING_ID_LENGTH = 6;
 // No 0/O/1/I so ids read clearly over the phone.
 export const BOOKING_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export const ADMIN_AUTH = Object.freeze({
+  PASSWORD_MIN_LENGTH: 8,
+  MAX_FAILED_LOGINS: 5,
+  LOCKOUT_MINUTES: 15,
+  RESET_TOKEN_TTL_MINUTES: 30,
+});
+
+// Mon-Fri check for weekday-only offers (JS getUTCDay on a date-only value: 0 = Sunday).
+export const WEEKEND_DAYS = [0, 6];
+
+export const OfferAccents = ['lime', 'ball', 'sky', 'amber'] as const;
 
 export const StaffRoles = Object.freeze({
   ADMIN: 'admin',

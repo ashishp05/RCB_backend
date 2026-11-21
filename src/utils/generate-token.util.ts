@@ -2,17 +2,25 @@ import jwt, { Secret } from 'jsonwebtoken';
 
 import { env } from '../config/env-config';
 
-const secret: Secret = env.JWT_SECRET as string;
+const secret: Secret = env.JWT_SECRET;
 
-const generateToken = (userId: string, role = 'user'): string => {
-  if (secret) {
-    const token = jwt.sign({ userId, role }, secret, {
-      expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
-    });
+export interface TokenPayload {
+  userId: string;
+  role: string;
+  // Session version; lets the server revoke every token issued before a password change.
+  tokenVersion?: number;
+}
 
-    return token;
-  }
-  throw new Error('JWT SECRET is undefined');
+export const generateToken = (userId: string, role = 'user', tokenVersion?: number): string =>
+  jwt.sign({ userId, role, ...(tokenVersion !== undefined && { tokenVersion }) }, secret, {
+    expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+  });
+
+// Throws when the token is malformed, tampered with or expired.
+export const verifyToken = (token: string): TokenPayload =>
+  jwt.verify(token, secret) as TokenPayload;
+
+export const tokenExpiresInSeconds = (token: string): number | null => {
+  const decoded = jwt.decode(token) as { exp?: number; iat?: number } | null;
+  return decoded?.exp && decoded.iat ? decoded.exp - decoded.iat : null;
 };
-
-export { generateToken };

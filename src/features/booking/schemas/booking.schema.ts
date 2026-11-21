@@ -7,10 +7,11 @@ import {
   hoursField,
   nameField,
   offerCodeField,
+  paymentKindField,
   phoneField,
 } from '../../../utils/validators.util';
 
-const paymentKind = z.enum(['upi_qr', 'credit_card', 'debit_card', 'cash']);
+const paymentKind = paymentKindField;
 const bookingStatus = z.enum(['upcoming', 'pending', 'completed', 'cancelled']);
 const bookingChannel = z.enum(['self', 'counter']);
 
@@ -29,6 +30,9 @@ export const createHoldSchema = z.object({
 export const pricePreviewSchema = z.object({
   venueId: z.string().trim().min(1).optional(),
   hours: z.coerce.number().int().min(1).max(24),
+  // Optional: weekday-only offers are judged on the booked date; startHour fills price.lines.
+  date: dateField.optional(),
+  startHour: hourField.optional(),
   offerCode: offerCodeField,
 });
 
@@ -70,6 +74,10 @@ export const adminCreateBookingSchema = z.object({
 
 export const adminBookingsQuerySchema = z.object({
   venueId: z.string().trim().min(1).optional(),
+  // "All bookings" tabs: upcoming = upcoming/pending (soonest first), past = completed/cancelled.
+  time: z.enum(['all', 'upcoming', 'past']).default('all'),
+  // "Filter by date" (single day). from/to give a range.
+  date: dateField.optional(),
   from: dateField.optional(),
   to: dateField.optional(),
   status: bookingStatus.optional(),
@@ -93,6 +101,8 @@ export const adminRescheduleBookingSchema = z.object({
   startHour: hourField,
   pitchId: z.string().trim().min(1).optional(),
 });
+
+export const paymentFailedSchema = z.object({ reason: reason });
 
 export const markPaidSchema = z.object({
   paymentKind: paymentKind.optional(),

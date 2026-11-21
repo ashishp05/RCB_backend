@@ -18,8 +18,15 @@ export interface VisitorDto {
   lastSeenAt: Date;
 }
 
-export interface CustomerDto extends VisitorDto {
-  bookingsCount: number;
+// Admin "Customers" row (Flutter fields: name, phone, count, firstSeen, lastSeen).
+export interface CustomerDto {
+  id: string;
+  name: string;
+  phone: string;
+  // Confirmed (upcoming + completed) bookings.
+  count: number;
   totalSpent: number;
+  firstSeen: Date;
+  lastSeen: Date;
   lastBookingAt: Date | null;
 }

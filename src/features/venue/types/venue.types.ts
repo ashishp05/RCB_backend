@@ -66,12 +66,18 @@ export interface VenueDto {
 export interface OfferDto {
   id: string;
   code: string;
+  title: string;
   description: string;
+  // Badge text, e.g. "₹50 OFF" or "20% OFF".
+  label: string;
   kind: 'flat' | 'percent';
   // flat: rupees off. percent: percent off.
   value: number;
   maxDiscount: number | null;
   minSubtotal: number;
+  minHours: number;
+  weekdaysOnly: boolean;
+  accent: string;
   active: boolean;
   validFrom: Date | null;
   validTo: Date | null;

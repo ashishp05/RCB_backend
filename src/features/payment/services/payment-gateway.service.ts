@@ -44,6 +44,10 @@ export class PaymentGatewayService {
     };
   }
 
+  async markBookingPaymentsFailed(bookingId: string): Promise<void> {
+    await this.paymentRepository.markOpenFailedForBooking(bookingId);
+  }
+
   // Refunds the booking's captured online payment. Returns false when it was not paid online.
   async refundBooking(bookingId: string, amountPaise: number): Promise<boolean> {
     const payment = await this.paymentRepository.findCapturedForBooking(bookingId);

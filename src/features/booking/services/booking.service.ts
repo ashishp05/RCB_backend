@@ -31,6 +31,7 @@ import {
   CreateHoldInput,
   NewBookingData,
   OnlinePaymentKind,
+  PricePreviewInput,
   PriceSnapshot,
 } from '../types/booking.types';
 import { calculatePrice, toPriceDto } from './pricing.service';
@@ -43,6 +44,7 @@ export const toBookingDto = (booking: BookingWithRelations): BookingDto => {
     id: booking.id,
     venueId: booking.venueId,
     venueName: booking.venue.name,
+    venueArea: booking.venue.area,
     pitchId: booking.pitchId,
     pitchName: booking.pitch.name,
     date,
@@ -53,8 +55,10 @@ export const toBookingDto = (booking: BookingWithRelations): BookingDto => {
     status: booking.status,
     channel: booking.channel,
     paymentKind: booking.paymentKind,
+    paymentMethod: booking.paymentMethodLabel,
     paymentMethodLabel: booking.paymentMethodLabel,
-    price: toPriceDto(booking.priceJson as unknown as PriceSnapshot),
+    createdBy: booking.channel === 'counter' ? 'staff' : 'guest',
+    price: toPriceDto(booking.priceJson as unknown as PriceSnapshot, booking.startHour),
     customerName: booking.customerName,
     customerPhone: booking.customerPhone,
     staffId: booking.staffId,
@@ -67,6 +71,12 @@ export const toBookingDto = (booking: BookingWithRelations): BookingDto => {
     cancelledAt: booking.cancelledAt,
     createdAt: booking.createdAt,
   };
+};
+
+// 100% when cancelled 24h+ before start, 50% at 6h+, otherwise nothing (BOOKING_RULES.REFUND_TIERS).
+export const policyRefundPaise = (paidPaise: number, hoursBeforeStart: number): number => {
+  const tier = BOOKING_RULES.REFUND_TIERS.find(t => hoursBeforeStart >= t.minHoursBefore);
+  return tier ? Math.round((paidPaise * tier.percent) / 100) : 0;
 };
 
 const bookingStart = (booking: Booking): Date =>
@@ -121,9 +131,10 @@ export class BookingService {
     await this.bookingRepository.deleteHold(holdId);
   }
 
-  async previewPrice(venueId: string, hours: number, offerCode?: string) {
-    const venue = await this.venueService.getVenueEntity(venueId);
-    return toPriceDto(await this.priceFor(venue, hours, offerCode));
+  async previewPrice(input: PricePreviewInput) {
+    const venue = await this.venueService.getVenueEntity(input.venueId ?? env.DEFAULT_VENUE_ID);
+    const price = await this.priceFor(venue, input.hours, input.offerCode, input.date);
+    return toPriceDto(price, input.startHour);
   }
 
   // Public self-booking
@@ -139,7 +150,12 @@ export class BookingService {
     }
 
     const venue = await this.venueService.getVenueEntity(hold.venueId);
-    const price = await this.priceFor(venue, hold.hours.length, input.offerCode);
+    const price = await this.priceFor(
+      venue,
+      hold.hours.length,
+      input.offerCode,
+      formatDateOnly(hold.date),
+    );
     const data = this.newBooking({
       venueId: hold.venueId,
       pitchId: hold.pitchId,
@@ -204,7 +220,12 @@ export class BookingService {
       input.date,
       input.hours,
     );
-    const price = await this.priceFor(selection.venue, selection.hours.length, input.offerCode);
+    const price = await this.priceFor(
+      selection.venue,
+      selection.hours.length,
+      input.offerCode,
+      selection.date,
+    );
     const isCash = input.paymentKind === 'cash';
 
     const data = this.newBooking({
@@ -249,17 +270,21 @@ export class BookingService {
   async listForAdmin(query: AdminBookingsQuery) {
     const where: Prisma.BookingWhereInput = {
       ...(query.venueId && { venueId: query.venueId }),
+      ...(query.time === 'upcoming' && { status: { in: ['upcoming', 'pending'] } }),
+      ...(query.time === 'past' && { status: { in: ['completed', 'cancelled'] } }),
       ...(query.status && { status: query.status }),
       ...(query.channel && { channel: query.channel }),
       ...(query.paymentKind && { paymentKind: query.paymentKind }),
       ...(query.pitchId && { pitchId: query.pitchId }),
       ...(query.phone && { customerPhone: { contains: query.phone } }),
-      ...((query.from || query.to) && {
-        date: {
-          ...(query.from && { gte: parseDateOnly(query.from) }),
-          ...(query.to && { lte: parseDateOnly(query.to) }),
-        },
-      }),
+      ...(query.date && { date: parseDateOnly(query.date) }),
+      ...(!query.date &&
+        (query.from || query.to) && {
+          date: {
+            ...(query.from && { gte: parseDateOnly(query.from) }),
+            ...(query.to && { lte: parseDateOnly(query.to) }),
+          },
+        }),
       ...(query.search && {
         OR: [
           { id: { contains: query.search, mode: 'insensitive' } },
@@ -272,6 +297,7 @@ export class BookingService {
       where,
       query.limit,
       query.skip,
+      query.time === 'upcoming' ? 'asc' : 'desc',
     );
     return { total, records: records.map(toBookingDto) };
   }
@@ -324,6 +350,21 @@ export class BookingService {
       paymentKind,
       paymentMethodLabel: label ?? booking.paymentMethodLabel ?? PaymentKindLabels[paymentKind],
     });
+  }
+
+  // Staff "Simulate failure" / declined card: release the pending booking and its slots.
+  async markPaymentFailed(id: string, reason?: string): Promise<BookingDto> {
+    const booking = await this.getEntity(id);
+    if (booking.status !== 'pending') {
+      throw new ApiError(StatusCodes.CONFLICT, ValidationMessages.BOOKING_NOT_PENDING);
+    }
+    await this.paymentGateway.markBookingPaymentsFailed(id);
+    return this.cancel(booking, reason ?? 'Payment failed');
+  }
+
+  async listToday(venueId: string, date: string): Promise<BookingDto[]> {
+    const bookings = await this.bookingRepository.findTodayForVenue(venueId, date);
+    return bookings.map(toBookingDto);
   }
 
   // Payments
@@ -395,11 +436,9 @@ export class BookingService {
       throw new ApiError(StatusCodes.CONFLICT, ValidationMessages.BOOKING_NOT_ACTIVE);
     }
 
-    // Nothing was paid for a pending booking. Confirmed bookings get a full refund when
-    // cancelled at least FREE_CANCELLATION_HOURS before start, otherwise none.
+    // Nothing was paid for a pending booking. Confirmed bookings follow the refund tiers.
     const paidPaise = booking.status === 'upcoming' ? booking.totalPaise : 0;
-    const policyRefund =
-      hoursUntil(bookingStart(booking)) >= BOOKING_RULES.FREE_CANCELLATION_HOURS ? paidPaise : 0;
+    const policyRefund = policyRefundPaise(paidPaise, hoursUntil(bookingStart(booking)));
     const refundPaise = Math.min(refundOverridePaise ?? policyRefund, paidPaise);
 
     if (refundPaise > 0) {
@@ -461,12 +500,13 @@ export class BookingService {
     venue: VenueWithDetails,
     hours: number,
     offerCode?: string,
+    date?: string,
   ): Promise<PriceSnapshot> {
     const settings = venue.settings;
     if (!settings) throw new ApiError(StatusCodes.NOT_FOUND, ValidationMessages.VENUE_NOT_FOUND);
     const subtotalPaise = settings.hourlyRatePaise * hours;
     const offer = offerCode
-      ? await this.venueService.resolveOffer(venue.id, offerCode, subtotalPaise)
+      ? await this.venueService.resolveOffer(venue.id, offerCode, subtotalPaise, hours, date)
       : null;
     return calculatePrice({
       hourlyRatePaise: settings.hourlyRatePaise,

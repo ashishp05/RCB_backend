@@ -1,8 +1,7 @@
-import bcrypt from 'bcrypt';
-
 import { env } from '../config/env-config';
 import { PrismaService } from '../config/prisma.config';
-import { BCRYPT_SALT_ROUNDS, StaffRoles } from '../constants/config.constants';
+import { StaffRoles } from '../constants/config.constants';
+import { hashPassword } from '../utils/password.util';
 
 // Idempotent seed: safe to run repeatedly. Re-running keeps admin-edited settings.
 const prisma = PrismaService.getInstance().client;
@@ -44,26 +43,81 @@ const main = async () => {
     create: { venueId, hourlyRatePaise: 90_000, additionalChargePaise: 2_000, gstRateBps: 0 },
   });
 
-  await prisma.offer.upsert({
-    where: { venueId_code: { venueId, code: 'RIVER50' } },
-    update: {},
-    create: {
-      venueId,
-      code: 'RIVER50',
-      description: 'Rs 50 off your booking',
-      kind: 'flat',
-      value: 5_000,
+  // Offers shown in the app ("Offers for you"). Values: flat = paise, percent = basis points.
+  const offers = [
+    {
+      code: 'WELCOME20',
+      title: 'First game on us',
+      description: '20% off your first booking, up to ₹300.',
+      kind: 'percent' as const,
+      value: 2_000,
+      maxDiscountPaise: 30_000,
+      minHours: 1,
+      weekdaysOnly: false,
+      accent: 'lime',
     },
-  });
+    {
+      code: 'WEEKDAY100',
+      title: 'Weekday warm-up',
+      description: 'Flat ₹100 off on 2+ hours, Monday to Friday.',
+      kind: 'flat' as const,
+      value: 10_000,
+      maxDiscountPaise: null,
+      minHours: 2,
+      weekdaysOnly: true,
+      accent: 'sky',
+    },
+    {
+      code: 'TEAM15',
+      title: 'Full match package',
+      description: '15% off when you play 3+ hours, up to ₹400.',
+      kind: 'percent' as const,
+      value: 1_500,
+      maxDiscountPaise: 40_000,
+      minHours: 3,
+      weekdaysOnly: false,
+      accent: 'ball',
+    },
+    {
+      code: 'RIVER50',
+      title: 'Riverside special',
+      description: 'Flat ₹50 off on any booking.',
+      kind: 'flat' as const,
+      value: 5_000,
+      maxDiscountPaise: null,
+      minHours: 1,
+      weekdaysOnly: false,
+      accent: 'amber',
+    },
+  ];
+  for (const offer of offers) {
+    await prisma.offer.upsert({
+      where: { venueId_code: { venueId, code: offer.code } },
+      update: {},
+      create: { venueId, ...offer },
+    });
+  }
 
-  const pinHash = await bcrypt.hash(env.STAFF_DEMO_PIN, BCRYPT_SALT_ROUNDS);
-  await prisma.staffUser.upsert({
-    where: { id: 'staff-demo' },
-    update: { pinHash },
-    create: { id: 'staff-demo', name: 'Counter Admin', pinHash, role: StaffRoles.ADMIN },
-  });
+  // First admin account. Create-only: re-running the seed never resets a changed password.
+  const email = env.ADMIN_SEED_EMAIL.toLowerCase();
+  const existing = await prisma.staffUser.findUnique({ where: { email } });
+  if (!existing) {
+    await prisma.staffUser.create({
+      data: {
+        name: env.ADMIN_SEED_NAME,
+        email,
+        role: StaffRoles.ADMIN,
+        passwordHash: await hashPassword(env.ADMIN_SEED_PASSWORD),
+      },
+    });
+  }
+  // The old PIN-based demo account cannot sign in with email/password; keep it for history only.
+  await prisma.staffUser.updateMany({ where: { id: 'staff-demo' }, data: { active: false } });
 
-  console.info(`Seeded venue "${venueId}", pitch "main", offer RIVER50 and staff-demo.`);
+  console.info(
+    `Seeded venue "${venueId}", pitch "main", ${offers.length} offers and admin ${email}` +
+      (existing ? ' (already existed, password unchanged).' : '.'),
+  );
 };
 
 main()

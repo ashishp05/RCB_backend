@@ -139,13 +139,18 @@ export class BookingRepository {
     });
   }
 
-  async findMany(where: Prisma.BookingWhereInput, take: number, skip: number) {
+  async findMany(
+    where: Prisma.BookingWhereInput,
+    take: number,
+    skip: number,
+    direction: Prisma.SortOrder = 'desc',
+  ) {
     const [total, records] = await this.prisma.$transaction([
       this.prisma.booking.count({ where }),
       this.prisma.booking.findMany({
         where,
         include: bookingInclude,
-        orderBy: [{ date: 'desc' }, { startHour: 'desc' }, { createdAt: 'desc' }],
+        orderBy: [{ date: direction }, { startHour: direction }, { createdAt: 'desc' }],
         take,
         skip,
       }),
@@ -227,6 +232,14 @@ export class BookingRepository {
         },
         include: bookingInclude,
       });
+    });
+  }
+
+  async findTodayForVenue(venueId: string, date: string) {
+    return this.prisma.booking.findMany({
+      where: { venueId, date: parseDateOnly(date), status: { not: 'cancelled' } },
+      include: bookingInclude,
+      orderBy: { startHour: 'asc' },
     });
   }
 

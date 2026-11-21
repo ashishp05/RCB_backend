@@ -27,6 +27,13 @@ export class PaymentRepository {
     });
   }
 
+  async markOpenFailedForBooking(bookingId: string) {
+    await this.prisma.payment.updateMany({
+      where: { bookingId, status: 'created' },
+      data: { status: 'failed' },
+    });
+  }
+
   async findCapturedForBooking(bookingId: string) {
     return this.prisma.payment.findFirst({
       where: { bookingId, status: 'captured' },

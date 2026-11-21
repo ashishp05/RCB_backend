@@ -1,8 +1,12 @@
 import { PrismaService } from './config/prisma.config';
 import { AdminController } from './features/admin/controllers/admin.controller';
+import { AdminAuthController } from './features/admin/controllers/admin-auth.controller';
+import { StaffController } from './features/admin/controllers/staff.controller';
+import { createStaffGuard } from './features/admin/middleware/staff-guard.middleware';
 import { StaffRepository } from './features/admin/repositories/staff.repository';
 import { AdminAuthService } from './features/admin/services/admin-auth.service';
 import { AdminDashboardService } from './features/admin/services/admin-dashboard.service';
+import { StaffService } from './features/admin/services/staff.service';
 import { BookingController } from './features/booking/controllers/booking.controller';
 import { BookingRepository } from './features/booking/repositories/booking.repository';
 import { BookingService } from './features/booking/services/booking.service';
@@ -44,7 +48,12 @@ const bookingService = new BookingService(
 );
 const paymentService = new PaymentService(paymentRepository, bookingService, razorpayClient);
 const adminAuthService = new AdminAuthService(staffRepository);
-const adminDashboardService = new AdminDashboardService(bookingRepository, venueService);
+const staffService = new StaffService(staffRepository);
+const adminDashboardService = new AdminDashboardService(
+  bookingRepository,
+  bookingService,
+  venueService,
+);
 
 export const container = {
   bookingRepository,
@@ -52,8 +61,10 @@ export const container = {
   visitorController: new VisitorController(visitorService),
   bookingController: new BookingController(bookingService),
   paymentController: new PaymentController(paymentService),
+  staffGuard: createStaffGuard(staffRepository),
+  adminAuthController: new AdminAuthController(adminAuthService),
+  staffController: new StaffController(staffService),
   adminController: new AdminController(
-    adminAuthService,
     adminDashboardService,
     venueService,
     bookingService,
