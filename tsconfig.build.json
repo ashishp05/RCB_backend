@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "tsc-alias": {
+    "resolveFullPaths": true
+  },
+  "exclude": ["node_modules", "dist", "coverage", "src/**/*.test.ts"]
+}
