@@ -9,8 +9,101 @@ IDs and timestamps will differ in your environment.
 - **Auth:** admin routes need `Authorization: Bearer <token>` from
   [`POST /admin/auth/login`](#post-adminauthlogin). Public routes need no auth.
 
+## About this document
+
+This is the **API integration guide** for this backend. It is written for two readers:
+
+- **Frontend developers** wiring the Flutter customer app and the admin panel to the real
+  server.
+- **AI coding agents** generating or updating that integration code (API clients, models,
+  repositories, error handling).
+
+It describes the HTTP contract only. You don't need to read the backend source to integrate.
+If the code and this document ever disagree, treat it as a bug and report it.
+
+### Integration rules
+
+1. **Read the [Conventions](#conventions) first.** Most integration bugs come from a few rules:
+   - Responses have **no `{ data }` wrapper**.
+   - Money is **rupees**, except the Razorpay order `amount`, which is **paise**.
+   - Dates are `YYYY-MM-DD` and hours are `0`–`23`, both in **IST**.
+   - Admin list totals are in the **`X-Total-Count`** header.
+2. **Model the [shared objects](#shared-objects) once** (Booking, Price, Payment order, Staff) and
+   reuse them. Every booking endpoint returns the same Booking object.
+3. **Handle errors by HTTP status, and show `message` to the user.** All errors are
+   `{ "success": false, "message": "...", "errors"?: [...] }`. The messages are written to be
+   shown in the app as they are.
+4. **Store the admin `token`** and send `Authorization: Bearer <token>`. On **401**, clear the
+   token and go to the login screen. Change-password returns a **new** token, so replace the
+   stored one.
+5. **Don't calculate prices on the client.** Show the `price` object returned by
+   `POST /bookings/price` and the booking endpoints.
+6. **Follow the flows in [Workflows](#workflows)**, especially hold → booking → payment for
+   customers, and walk-in → mark-paid / payment-failed at the counter.
+
+### Notes for AI agents
+
+- Use the [Endpoint index](#endpoint-index) to find a route, then read its section for the rules
+  and error cases.
+- Copy field names exactly as shown in the JSON examples (camelCase). Enum values are listed in
+  [Conventions](#conventions).
+- Fields shown as `"...": "see Booking"` are abbreviations in this document only; the real
+  response contains the full object.
+- Fields marked optional can be left out of the request entirely. Nullable response fields really
+  are `null`, never missing.
+- Don't invent endpoints or fields that aren't documented here. If something the UI needs is
+  missing, flag it instead of guessing.
+
+### Endpoint index
+
+Paths are relative to `/api/v1`, except the health checks. **Auth:** `-` public · `staff` any
+signed-in staff · `admin` admin role only.
+
+| Method | Path | Auth | Purpose |
+| :--- | :--- | :--- | :--- |
+| GET | `/` · `/heartbeat` (server root) | - | Health checks |
+| POST | `/visitors` | - | Save customer name + mobile |
+| GET | `/visitors/me?phone=` | - | Look up a visitor |
+| GET | `/venues` · `/venues/:id` | - | Venue, prices, pitches, rules |
+| GET | `/venues/:id/slots?date=&pitchId=` | - | Hourly slot grid |
+| GET | `/venues/:id/offers` | - | Active offer codes |
+| POST | `/holds` | - | Hold slots for 8 minutes |
+| DELETE | `/holds/:id` | - | Release a hold |
+| POST | `/bookings/price` | - | Price preview / check an offer |
+| POST | `/bookings` | - | Create a pending booking from a hold |
+| GET | `/bookings?phone=` · `/bookings/:id` | - | My bookings / one booking |
+| POST | `/bookings/:id/cancel` | - | Cancel (with refund policy) |
+| POST | `/bookings/:id/reschedule` | - | Move to a new date or time |
+| POST | `/payments/razorpay/order` | - | Create a Razorpay order |
+| POST | `/payments/razorpay/verify` | - | Confirm a payment from Checkout |
+| POST | `/payments/razorpay/webhook` | Razorpay | Razorpay server callback (not for the app) |
+| POST | `/admin/auth/login` | - | Email + password login |
+| POST | `/admin/auth/forgot-password` · `/reset-password` | - | Password reset by email |
+| GET | `/admin/auth/me` | staff | Current staff member |
+| POST | `/admin/auth/change-password` | staff | Change password (returns a new token) |
+| POST | `/admin/auth/logout` · `/logout-all` | staff | Log out / revoke all sessions |
+| GET, POST | `/admin/staff` | admin | List / create staff accounts |
+| GET, PATCH | `/admin/staff/:id` | admin | View / update a staff account |
+| POST | `/admin/staff/:id/password` | admin | Set someone's password |
+| GET | `/admin/dashboard?date=` | staff | Desk home stats + today's bookings |
+| POST | `/admin/bookings` | staff | Book walk-in |
+| GET | `/admin/bookings?time=&date=&channel=&paymentKind=…` | staff | All bookings (filtered) |
+| GET | `/admin/bookings/:id` | staff | Booking detail with payments + SMS |
+| POST | `/admin/bookings/:id/mark-paid` | staff | Confirm cash / card / simulate success |
+| POST | `/admin/bookings/:id/payment-failed` | staff | Simulate failure, freeing the slot |
+| POST | `/admin/bookings/:id/payment-order` | staff | New Razorpay order for a pending booking |
+| POST | `/admin/bookings/:id/cancel` · `/reschedule` | staff | Cancel / reschedule |
+| GET | `/admin/customers` · `/admin/customers/:phone` | staff | Customers / one customer with bookings |
+| GET | `/admin/venues/:id/settings` | staff | Rates & charges (with 1-hour preview) |
+| PATCH | `/admin/venues/:id/settings` | admin | Change rates & rules |
+| GET | `/admin/venues/:id/offers` | staff | All offers |
+| POST, PATCH | `/admin/venues/:id/offers[/:offerId]` | admin | Create / update an offer |
+| GET | `/admin/sms` | staff | SMS log |
+| GET | `/admin/qr-link` | staff | Counter QR URL |
+
 ## Contents
 
+- [About this document](#about-this-document)
 - [Conventions](#conventions)
 - [Shared objects](#shared-objects): Booking, Price, Payment order, Staff
 - **Public (customer site)**
