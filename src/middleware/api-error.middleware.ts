@@ -86,6 +86,21 @@ const apiErrorHandler = (
         .json({ success: false, message: ValidationMessages.DUPLICATE_RECORD });
       return;
     }
+    // Record to update/delete does not exist
+    if (err.code === 'P2025') {
+      res
+        .status(StatusCodes.NOT_FOUND)
+        .json({ success: false, message: ValidationMessages.RECORD_NOT_FOUND });
+      return;
+    }
+    // Write conflict / deadlock: the client can simply retry
+    if (err.code === 'P2034') {
+      res
+        .status(StatusCodes.CONFLICT)
+        .json({ success: false, message: ValidationMessages.TOO_MANY_REQUESTS });
+      return;
+    }
+    console.error('Unhandled Prisma error', err.code, err.message);
     // Handle Prisma validation errors
     if (err.meta) {
       const firstKey = Object.keys(err?.meta)[0];

@@ -38,6 +38,26 @@ export const envSchema = z.object({
     .optional()
     .transform(val => val === 'true')
     .default(false),
+  DEFAULT_VENUE_ID: z.string().default('arena'),
+  PUBLIC_SITE_URL: z.string().url().default('http://localhost:5173'),
+  STAFF_DEMO_PIN: z
+    .string()
+    .regex(/^\d{4,6}$/, 'STAFF_DEMO_PIN must be 4-6 digits')
+    .default('1234'),
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  UPI_VPA: z.string().optional(),
+  UPI_PAYEE_NAME: z.string().default('The Riverside Cricket Box'),
+  SMS_PROVIDER: z.enum(['msg91', 'twilio', 'console']).default('console'),
+  MSG91_AUTH_KEY: z.string().optional(),
+  MSG91_SENDER_ID: z.string().optional(),
+  MSG91_TEMPLATE_CUSTOMER: z.string().optional(),
+  MSG91_TEMPLATE_ADMIN: z.string().optional(),
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM_NUMBER: z.string().optional(),
+  ADMIN_NOTIFY_PHONE: z.string().optional(),
 });
 
 export type EnvVars = z.infer<typeof envSchema>;

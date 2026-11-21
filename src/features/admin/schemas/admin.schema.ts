@@ -1,17 +1,15 @@
 import { z } from 'zod';
 
-export const adminRegisterSchema = z.object({
-  name: z.string().min(2, 'Name is required and must be at least 2 characters'),
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+import { dateField } from '../../../utils/validators.util';
+
+export const staffLoginSchema = z.object({
+  pin: z
+    .string()
+    .trim()
+    .regex(/^\d{4,6}$/, 'PIN must be 4 to 6 digits'),
 });
 
-export const adminLoginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
-});
-
-export const adminChangePasswordSchema = z.object({
-  oldPassword: z.string().min(1, 'Current password is required'),
-  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+export const dashboardQuerySchema = z.object({
+  venueId: z.string().trim().min(1).optional(),
+  date: dateField.optional(),
 });

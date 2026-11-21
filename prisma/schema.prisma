@@ -9,15 +9,265 @@ datasource db {
   provider = "postgresql"
 }
 
-model Admin {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  image     String?
+// All money columns are integer paise (Rs 1 = 100 paise). The API exposes rupees.
+
+enum BookingStatus {
+  upcoming
+  pending
+  completed
+  cancelled
+}
+
+enum BookingChannel {
+  self
+  counter
+}
+
+enum PaymentKind {
+  upi_qr
+  credit_card
+  debit_card
+  cash
+}
+
+enum PaymentStatus {
+  created
+  captured
+  failed
+  refunded
+}
+
+enum SmsRecipient {
+  customer
+  admin
+}
+
+enum SmsStatus {
+  sent
+  failed
+  simulated
+}
+
+enum OfferKind {
+  flat
+  percent
+}
+
+model Venue {
+  id          String @id
+  name        String
+  area        String @default("")
+  city        String @default("")
+  address     String @default("")
+  description String @default("")
+  phone       String @default("")
+  openHour    Int    @default(0)
+  closeHour   Int    @default(24)
+  minHours    Int    @default(1)
+  maxHours    Int    @default(24)
+  advanceDays Int    @default(14)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings VenueSettings?
+  pitches  Pitch[]
+  bookings Booking[]
+  offers   Offer[]
+
+  @@map("venues")
+}
+
+model Pitch {
+  id      String  @id
+  venueId String
+  name    String
+  size    String  @default("")
+  format  String  @default("")
+  active  Boolean @default(true)
+
+  venue    Venue         @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  holds    Hold[]
+  bookings Booking[]
+  slots    BookingSlot[]
+
+  @@index([venueId])
+  @@map("pitches")
+}
+
+model VenueSettings {
+  venueId               String   @id
+  hourlyRatePaise       Int
+  additionalChargePaise Int      @default(0)
+  // Basis points: 0 = off, 1800 = 18%.
+  gstRateBps            Int      @default(0)
+  updatedAt             DateTime @updatedAt
+
+  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@map("venue_settings")
+}
+
+model Visitor {
+  id         String   @id
+  name       String
+  phone      String   @unique
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@map("visitors")
+}
+
+model StaffUser {
+  id        String   @id
+  name      String   @default("Staff")
+  pinHash   String
+  role      String   @default("admin")
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("admins")
+  bookings Booking[]
+
+  @@map("staff_users")
+}
+
+model Offer {
+  id               String    @id @default(uuid())
+  venueId          String
+  code             String
+  description      String    @default("")
+  kind             OfferKind @default(flat)
+  // flat: paise off. percent: basis points off (1000 = 10%).
+  value            Int
+  maxDiscountPaise Int?
+  minSubtotalPaise Int       @default(0)
+  active           Boolean   @default(true)
+  validFrom        DateTime?
+  validTo          DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@unique([venueId, code])
+  @@map("offers")
+}
+
+model Hold {
+  id           String   @id
+  venueId      String
+  pitchId      String
+  date         DateTime @db.Date
+  hours        Int[]
+  expiresAt    DateTime
+  visitorPhone String?
+  createdAt    DateTime @default(now())
+
+  pitch Pitch         @relation(fields: [pitchId], references: [id], onDelete: Cascade)
+  slots BookingSlot[]
+
+  @@index([expiresAt])
+  @@map("holds")
+}
+
+model Booking {
+  id                 String         @id
+  venueId            String
+  pitchId            String
+  date               DateTime       @db.Date
+  startHour          Int
+  hours              Int
+  status             BookingStatus
+  channel            BookingChannel
+  paymentKind        PaymentKind?
+  paymentMethodLabel String?
+  // Price breakdown snapshot in paise; see PriceSnapshot in booking.types.ts.
+  priceJson          Json
+  totalPaise         Int
+  couponCode         String?
+  customerName       String
+  customerPhone      String
+  staffId            String?
+  players            Int?
+  notes              String?
+  // Unpaid pending bookings are released after this time.
+  expiresAt          DateTime?
+  confirmedAt        DateTime?
+  cancelledAt        DateTime?
+  refundAmountPaise  Int?
+  cancelReason       String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  venue    Venue         @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  pitch    Pitch         @relation(fields: [pitchId], references: [id], onDelete: Cascade)
+  staff    StaffUser?    @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  slots    BookingSlot[]
+  payments Payment[]
+  sms      SmsMessage[]
+
+  @@index([customerPhone])
+  @@index([venueId, date])
+  @@index([status, expiresAt])
+  @@map("bookings")
+}
+
+// One row per occupied (pitch, date, hour). A row belongs to a hold or to an active booking.
+// The unique constraint makes double booking impossible even under concurrent requests.
+model BookingSlot {
+  id        String   @id @default(uuid())
+  pitchId   String
+  date      DateTime @db.Date
+  hour      Int
+  holdId    String?
+  bookingId String?
+  createdAt DateTime @default(now())
+
+  pitch   Pitch    @relation(fields: [pitchId], references: [id], onDelete: Cascade)
+  hold    Hold?    @relation(fields: [holdId], references: [id], onDelete: Cascade)
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@unique([pitchId, date, hour])
+  @@index([holdId])
+  @@index([bookingId])
+  @@map("booking_slots")
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  bookingId   String
+  provider    String        @default("razorpay")
+  orderId     String        @unique
+  paymentId   String?
+  status      PaymentStatus @default(created)
+  amountPaise Int
+  method      String
+  refundId    String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@map("payments")
+}
+
+model SmsMessage {
+  id         String       @id @default(uuid())
+  toPhone    String
+  recipient  SmsRecipient
+  body       String
+  bookingId  String?
+  provider   String
+  providerId String?
+  status     SmsStatus
+  error      String?
+  sentAt     DateTime     @default(now())
+
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId])
+  @@index([sentAt])
+  @@map("sms_messages")
 }

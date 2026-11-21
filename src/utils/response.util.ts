@@ -1,27 +1,18 @@
 import { Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 
-import { ResponseMessages } from '../constants/messages';
-
-export class ApiResponse<T = unknown> {
-  public statusCode: number;
-  public data: T;
-  public message: string;
-  public success: boolean;
-
-  constructor(statusCode: number, data: T, message: string = 'Success') {
-    this.statusCode = statusCode;
-    this.data = data;
-    this.message = message;
-    this.success = statusCode < 400;
-  }
-}
-
-export const sendJsonResponse = <T = unknown>(
+// API bodies follow the box cricket contract: the payload itself is the JSON body.
+// Errors use { success: false, message, errors? } from the error middleware.
+export const sendData = <T = unknown>(
   res: Response,
   data: T,
-  message: string = ResponseMessages.FETCHED,
   statusCode: number = StatusCodes.OK,
-): Response => {
-  return res.status(statusCode).json(new ApiResponse(statusCode, data, message));
+): Response => res.status(statusCode).json(data);
+
+// Lists that support paging return an array and the full count in X-Total-Count.
+export const sendList = <T = unknown>(res: Response, records: T[], total?: number): Response => {
+  if (total !== undefined) {
+    res.setHeader('X-Total-Count', String(total));
+  }
+  return res.status(StatusCodes.OK).json(records);
 };

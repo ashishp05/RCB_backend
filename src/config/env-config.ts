@@ -16,7 +16,7 @@ let declaredEnvKeys: string[] = [];
 if (fs.existsSync(envFile)) {
   const fileContents = fs.readFileSync(envFile, 'utf8');
   declaredEnvKeys = Object.keys(dotenv.parse(fileContents));
-  dotenv.config({ path: envFile });
+  dotenv.config({ path: envFile, quiet: true });
   // eslint-disable-next-line node/no-process-env
   console.log(`✅ Loaded environment: ${envFile}\nNODE_ENV: ${process.env.NODE_ENV}`);
 } else {

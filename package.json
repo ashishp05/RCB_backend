@@ -1,5 +1,5 @@
 {
-  "name": "node-prisma-boilerplate",
+  "name": "box-cricket-backend",
   "version": "1.0.0",
   "main": "dist/server.js",
   "scripts": {
@@ -7,6 +7,7 @@
     "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && mkdir -p dist/templates && cp -r src/templates/* dist/templates/",
     "start": "node dist/server.js",
     "dev": "nodemon --ext ts --exec tsx src/server.ts",
+    "test": "node --import tsx --test 'src/**/*.test.ts'",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -17,7 +18,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "db:seed": "tsx src/seeds/seed.ts"
   },
   "engines": {
     "node": ">=24"

@@ -9,4 +9,42 @@ export const MAX_PAGE_SIZE = 100;
 
 export const BCRYPT_SALT_ROUNDS = 10;
 
-export const APP_NAME = 'Node With Prisma';
+export const APP_NAME = 'The Riverside Cricket Box';
+
+// The venue operates on Indian time: "today", "past" slots and refund cutoffs use IST.
+export const VENUE_TIME_ZONE = 'Asia/Kolkata';
+
+export const BOOKING_RULES = Object.freeze({
+  // A hold reserves slots while the visitor fills in details.
+  HOLD_TTL_MINUTES: 8,
+  // An unpaid pending booking keeps its slots this long before release.
+  PENDING_PAYMENT_TTL_MINUTES: 15,
+  // Full refund when cancelled at least this many hours before start, otherwise none.
+  FREE_CANCELLATION_HOURS: 24,
+  // Reschedule allowed until this many hours before the original start.
+  RESCHEDULE_CUTOFF_HOURS: 2,
+  // Background sweep for expired holds, unpaid bookings and finished games.
+  SWEEP_INTERVAL_MS: 60 * 1000,
+  MAX_PLAYERS: 30,
+});
+
+export const BOOKING_ID_PREFIX = 'BX';
+export const BOOKING_ID_LENGTH = 6;
+// No 0/O/1/I so ids read clearly over the phone.
+export const BOOKING_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export const StaffRoles = Object.freeze({
+  ADMIN: 'admin',
+  STAFF: 'staff',
+} as const);
+
+export type StaffRole = (typeof StaffRoles)[keyof typeof StaffRoles];
+
+export const PaymentKindLabels = Object.freeze({
+  upi_qr: 'UPI QR',
+  credit_card: 'Credit card',
+  debit_card: 'Debit card',
+  cash: 'Cash',
+} as const);
+
+export const CURRENCY = 'INR';

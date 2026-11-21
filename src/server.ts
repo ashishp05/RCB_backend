@@ -3,6 +3,8 @@ import { Server as HttpServer } from 'http';
 import { app } from './app';
 import { env } from './config/env-config';
 import { PrismaService } from './config/prisma.config';
+import { container } from './container';
+import { BookingSweeperJob } from './jobs/booking-sweeper.job';
 
 const SHUTDOWN_TIMEOUT_MS = 10000;
 
@@ -10,16 +12,19 @@ class Server {
   private readonly port: number;
   private serverInstance: HttpServer | undefined;
   private readonly prisma: PrismaService;
+  private readonly sweeper: BookingSweeperJob;
 
   constructor(port: number) {
     this.port = port;
     this.prisma = PrismaService.getInstance();
+    this.sweeper = new BookingSweeperJob(container.bookingRepository);
   }
 
   // Start the server
   public start(): void {
     this.serverInstance = app.listen(this.port, () => {
       console.info(`Server running at http://localhost:${this.port}`);
+      this.sweeper.start();
     });
 
     // Handle system signals for graceful shutdown
@@ -32,6 +37,7 @@ class Server {
   // Graceful shutdown logic
   private async gracefulShutdown(): Promise<void> {
     console.info('Received shutdown signal, shutting down gracefully...');
+    this.sweeper.stop();
     try {
       // Stop accepting new connections
       this.serverInstance?.close(async () => {

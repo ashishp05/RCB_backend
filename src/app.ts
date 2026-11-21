@@ -37,6 +37,7 @@ app.use(
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    exposedHeaders: ['X-Total-Count'],
   }),
 );
 
@@ -48,8 +49,11 @@ app.use(
   }),
 );
 
+// Razorpay webhooks are signed over the raw bytes, so keep that body unparsed.
+app.use('/api/v1/payments/razorpay/webhook', express.raw({ type: '*/*', limit: '1mb' }));
+
 // Global Middlewares
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Serve uploaded media statically
@@ -68,8 +72,7 @@ app.get('/heartbeat', (req: Request, res: Response): void => {
 // API Routes
 app.use('/api/v1', router);
 
-// Error Handling Middleware (Optional)
-// For prisma error and other error
+// Error handling (ApiError, Zod/JSON errors, Prisma errors)
 app.use(apiErrorHandler);
 
 // Middleware for handling unmatched routes
