@@ -3,6 +3,9 @@ export const RATE_LIMIT = {
   GLOBAL_MAX: 600,
   AUTH_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
   AUTH_MAX: 10,
+  // Customer OTP send/verify, per IP. Kept separate so customers never lock staff out.
+  OTP_WINDOW_MS: 15 * 60 * 1000,
+  OTP_MAX: 30,
 };
 
 export const MAX_PAGE_SIZE = 100;
@@ -41,6 +44,19 @@ export const ADMIN_AUTH = Object.freeze({
   MAX_FAILED_LOGINS: 5,
   LOCKOUT_MINUTES: 15,
   RESET_TOKEN_TTL_MINUTES: 30,
+});
+
+// Customer-site login by SMS one-time code.
+export const CUSTOMER_AUTH = Object.freeze({
+  OTP_LENGTH: 6,
+  OTP_TTL_MINUTES: 5,
+  // Wait this long before another code can be sent to the same number.
+  OTP_RESEND_SECONDS: 30,
+  // At most this many codes per number per hour.
+  OTP_MAX_SENDS_PER_HOUR: 5,
+  // Wrong guesses allowed on one code before it is burnt.
+  OTP_MAX_ATTEMPTS: 5,
+  TOKEN_ROLE: 'visitor',
 });
 
 // Mon-Fri check for weekday-only offers (JS getUTCDay on a date-only value: 0 = Sunday).

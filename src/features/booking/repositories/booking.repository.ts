@@ -78,8 +78,9 @@ export class BookingRepository {
     return this.prisma.hold.findUnique({ where: { id } });
   }
 
-  async deleteHold(id: string) {
-    await this.prisma.hold.deleteMany({ where: { id } });
+  // Only the visitor who made the hold can release it.
+  async deleteHold(id: string, visitorPhone: string) {
+    await this.prisma.hold.deleteMany({ where: { id, visitorPhone } });
   }
 
   // Moves the hold's slot rows onto a new booking in one transaction.

@@ -9,7 +9,6 @@ import {
   cancelBookingSchema,
   createBookingSchema,
   createHoldSchema,
-  customerBookingsQuerySchema,
   markPaidSchema,
   paymentFailedSchema,
   pricePreviewSchema,
@@ -18,7 +17,6 @@ import {
 
 export type CreateHoldInput = z.infer<typeof createHoldSchema>;
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
-export type CustomerBookingsQuery = z.infer<typeof customerBookingsQuerySchema>;
 export type CancelBookingInput = z.infer<typeof cancelBookingSchema>;
 export type RescheduleBookingInput = z.infer<typeof rescheduleBookingSchema>;
 export type PricePreviewInput = z.infer<typeof pricePreviewSchema>;

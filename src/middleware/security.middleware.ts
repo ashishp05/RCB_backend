@@ -27,6 +27,19 @@ const authRateLimiter = rateLimit({
   },
 });
 
+// Customer OTP send/verify (its own counter, separate from staff login).
+const otpRateLimiter = rateLimit({
+  windowMs: RATE_LIMIT.OTP_WINDOW_MS,
+  max: RATE_LIMIT.OTP_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  message: {
+    success: false,
+    message: ValidationMessages.TOO_MANY_REQUESTS,
+  },
+});
+
 // Middleware to check host whitelist
 // Rejects requests whose Origin header is not in the given whitelist.
 const hostWhitelist = (allowedUrls: string[]) => {
@@ -51,4 +64,4 @@ const hostWhitelist = (allowedUrls: string[]) => {
   };
 };
 
-export { authRateLimiter, hostWhitelist, rateLimiter };
+export { authRateLimiter, hostWhitelist, otpRateLimiter, rateLimiter };

@@ -5,6 +5,7 @@ import { env } from './config/env-config';
 import { PrismaService } from './config/prisma.config';
 import { container } from './container';
 import { BookingSweeperJob } from './jobs/booking-sweeper.job';
+import { seedAdminAccount } from './seeds/admin.seeder';
 
 const SHUTDOWN_TIMEOUT_MS = 10000;
 
@@ -27,7 +28,7 @@ class Server {
   constructor(port: number) {
     this.port = port;
     this.prisma = PrismaService.getInstance();
-    this.sweeper = new BookingSweeperJob(container.bookingRepository);
+    this.sweeper = new BookingSweeperJob(container.bookingRepository, container.visitorService);
   }
 
   // Start the server once the database answers; fail fast with a readable message otherwise.
@@ -44,6 +45,15 @@ class Server {
       );
       await this.prisma.disconnect().catch(() => undefined);
       process.exit(1);
+    }
+
+    // Make sure the ADMIN_SEED_* admin can log in on a fresh database.
+    try {
+      const admin = await seedAdminAccount(this.prisma.client);
+      if (admin.created)
+        console.info(`✅ Created admin account ${admin.email} (from ADMIN_SEED_*)`);
+    } catch (error) {
+      console.error('Could not ensure the seed admin account', error);
     }
 
     this.serverInstance = app.listen(this.port, () => {

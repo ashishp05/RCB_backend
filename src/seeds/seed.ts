@@ -1,7 +1,6 @@
 import { env } from '../config/env-config';
 import { PrismaService } from '../config/prisma.config';
-import { StaffRoles } from '../constants/config.constants';
-import { hashPassword } from '../utils/password.util';
+import { seedAdminAccount } from './admin.seeder';
 
 // Idempotent seed: safe to run repeatedly. Re-running keeps admin-edited settings.
 const prisma = PrismaService.getInstance().client;
@@ -99,24 +98,13 @@ const main = async () => {
   }
 
   // First admin account. Create-only: re-running the seed never resets a changed password.
-  const email = env.ADMIN_SEED_EMAIL.toLowerCase();
-  const existing = await prisma.staffUser.findUnique({ where: { email } });
-  if (!existing) {
-    await prisma.staffUser.create({
-      data: {
-        name: env.ADMIN_SEED_NAME,
-        email,
-        role: StaffRoles.ADMIN,
-        passwordHash: await hashPassword(env.ADMIN_SEED_PASSWORD),
-      },
-    });
-  }
+  const { email, created } = await seedAdminAccount(prisma);
   // The old PIN-based demo account cannot sign in with email/password; keep it for history only.
   await prisma.staffUser.updateMany({ where: { id: 'staff-demo' }, data: { active: false } });
 
   console.info(
     `Seeded venue "${venueId}", pitch "main", ${offers.length} offers and admin ${email}` +
-      (existing ? ' (already existed, password unchanged).' : '.'),
+      (created ? '.' : ' (already existed, password unchanged).'),
   );
 };
 

@@ -24,7 +24,6 @@ export const createHoldSchema = z.object({
   pitchId: z.string().trim().min(1).optional(),
   date: dateField,
   hours: hoursField,
-  phone: phoneField.optional(),
 });
 
 export const pricePreviewSchema = z.object({
@@ -38,8 +37,8 @@ export const pricePreviewSchema = z.object({
 
 export const createBookingSchema = z.object({
   holdId: z.string().trim().min(1),
-  customerName: nameField,
-  customerPhone: phoneField,
+  // Defaults to the signed-in visitor's saved name. The phone always comes from the login.
+  customerName: nameField.optional(),
   players,
   notes,
   // Counter bookings go through /admin/bookings; the public site is always "self".
@@ -47,13 +46,10 @@ export const createBookingSchema = z.object({
   offerCode: offerCodeField,
 });
 
-export const customerBookingsQuerySchema = z.object({ phone: phoneField });
-
-// The mobile number proves the caller owns the booking (soft visitor identity).
-export const cancelBookingSchema = z.object({ phone: phoneField, reason });
+// The signed-in visitor (OTP login) must own the booking.
+export const cancelBookingSchema = z.object({ reason });
 
 export const rescheduleBookingSchema = z.object({
-  phone: phoneField,
   date: dateField,
   startHour: hourField,
 });

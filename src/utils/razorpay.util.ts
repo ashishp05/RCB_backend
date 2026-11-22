@@ -20,6 +20,16 @@ export interface RazorpayRefund {
   amount: number;
 }
 
+// Subset of https://razorpay.com/docs/api/payments/#fetch-a-payment
+export interface RazorpayPayment {
+  id: string;
+  order_id: string | null;
+  amount: number;
+  currency: string;
+  status: 'created' | 'authorized' | 'captured' | 'refunded' | 'failed';
+  method: string;
+}
+
 const hmacHex = (secret: string, payload: string | Buffer): string =>
   crypto.createHmac('sha256', secret).update(payload).digest('hex');
 
@@ -53,14 +63,14 @@ export class RazorpayClient {
     }
   }
 
-  private async request<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  private async request<T>(path: string, body?: Record<string, unknown>): Promise<T> {
     const auth = Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString(
       'base64',
     );
     const response = await fetch(`${RAZORPAY_API}${path}`, {
-      method: 'POST',
+      method: body ? 'POST' : 'GET',
       headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
-      body: JSON.stringify(body),
+      ...(body && { body: JSON.stringify(body) }),
     });
     const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {
@@ -97,6 +107,21 @@ export class RazorpayClient {
     });
   }
 
+  async fetchPayment(paymentId: string): Promise<RazorpayPayment> {
+    this.assertAvailable();
+    return this.request<RazorpayPayment>(`/payments/${paymentId}`);
+  }
+
+  // Needed only when the Razorpay account is set to manual capture; auto-capture accounts
+  // already return "captured".
+  async capturePayment(paymentId: string, amountPaise: number): Promise<RazorpayPayment> {
+    this.assertAvailable();
+    return this.request<RazorpayPayment>(`/payments/${paymentId}/capture`, {
+      amount: amountPaise,
+      currency: CURRENCY,
+    });
+  }
+
   // Checkout success handler signature: HMAC_SHA256(order_id|payment_id, key_secret).
   verifyPaymentSignature(orderId: string, paymentId: string, signature: string): boolean {
     if (this.isMock()) return true;
@@ -112,7 +137,9 @@ export class RazorpayClient {
   }
 }
 
-// UPI deep link for the on-screen QR. Requires UPI_VPA; returns null otherwise.
+// Direct UPI deep link for the on-screen QR, used only when Razorpay is NOT configured (the
+// counter confirms such payments by hand). With Razorpay keys, UPI goes through Razorpay
+// Checkout so payments are matched to the order and confirmed automatically.
 export const buildUpiQrString = (
   amountPaise: number,
   reference: string,

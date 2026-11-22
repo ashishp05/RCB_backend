@@ -12,7 +12,10 @@ import {
   paymentFailedSchema,
 } from '../../booking/schemas/booking.schema';
 import { smsQuerySchema } from '../../notification/schemas/sms.schema';
-import { paymentOrderMethodSchema } from '../../payment/schemas/payment.schema';
+import {
+  paymentOrderMethodSchema,
+  staffVerifyPaymentSchema,
+} from '../../payment/schemas/payment.schema';
 import {
   createOfferSchema,
   updateOfferSchema,
@@ -23,7 +26,7 @@ import { dashboardQuerySchema } from '../schemas/admin.schema';
 import adminAuthRoutes from './admin-auth.routes';
 import adminStaffRoutes from './admin-staff.routes';
 
-const { adminController, staffGuard } = container;
+const { adminController, paymentController, staffGuard } = container;
 
 // admin: everything. staff: counter desk (bookings, customers, SMS log, QR).
 const anyStaff = staffGuard([StaffRoles.ADMIN, StaffRoles.STAFF]);
@@ -96,6 +99,12 @@ router.post(
   ...anyStaff,
   validateRequest(paymentOrderMethodSchema),
   adminController.createPaymentOrder,
+);
+router.post(
+  '/bookings/:id/payment-verify',
+  ...anyStaff,
+  validateRequest(staffVerifyPaymentSchema),
+  paymentController.staffVerify,
 );
 router.post(
   '/bookings/:id/cancel',

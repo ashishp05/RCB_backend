@@ -7,6 +7,7 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().default('1d'),
+  VISITOR_JWT_EXPIRES_IN: z.string().default('30d'),
   WHITE_LIST_URLS: z
     .string()
     .transform(value => value.split(',').map(url => url.trim()))
@@ -42,11 +43,11 @@ export const envSchema = z.object({
   PUBLIC_SITE_URL: z.string().url().default('http://localhost:5173'),
   ADMIN_PANEL_URL: z.string().url().optional(),
   ADMIN_SEED_NAME: z.string().default('Venue Admin'),
-  ADMIN_SEED_EMAIL: z.string().email().default('admin@riverside.example'),
+  ADMIN_SEED_EMAIL: z.string().email().default('admin.rcb@yopmail.com'),
   ADMIN_SEED_PASSWORD: z
     .string()
     .min(8, 'ADMIN_SEED_PASSWORD must be at least 8 characters')
-    .default('Admin@12345'),
+    .default('Admin@123'),
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
@@ -57,6 +58,9 @@ export const envSchema = z.object({
   MSG91_SENDER_ID: z.string().optional(),
   MSG91_TEMPLATE_CUSTOMER: z.string().optional(),
   MSG91_TEMPLATE_ADMIN: z.string().optional(),
+  MSG91_TEMPLATE_OTP: z.string().optional(),
+  MSG91_TEMPLATE_CANCELLED: z.string().optional(),
+  MSG91_TEMPLATE_RESCHEDULED: z.string().optional(),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),

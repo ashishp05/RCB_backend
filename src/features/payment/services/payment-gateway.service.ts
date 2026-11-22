@@ -36,7 +36,7 @@ export class PaymentGatewayService {
       currency: CURRENCY,
       keyId: this.razorpay.keyId(),
       qrString:
-        method === 'upi_qr'
+        method === 'upi_qr' && !this.razorpay.isConfigured()
           ? buildUpiQrString(booking.totalPaise, order.id, `Booking ${booking.id}`)
           : null,
       method,

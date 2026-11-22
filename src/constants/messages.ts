@@ -11,6 +11,7 @@ export const ResponseMessages = Object.freeze({
   PASSWORD_CHANGED: 'Password changed successfully',
   PASSWORD_RESET_EMAIL_SENT: 'If an account exists for this email, a reset link has been sent.',
   PASSWORD_RESET_DONE: 'Password has been reset. You can log in now.',
+  OTP_SENT: 'We sent a 6-digit code to your mobile number.',
 
   // Box cricket Responses
   VISITOR_SAVED: 'Visitor saved',
@@ -55,8 +56,23 @@ export const ValidationMessages = Object.freeze({
   LAST_ADMIN: 'At least one active admin account is required',
   PASSWORD_RULES: 'Password must be at least 8 characters and include a letter and a number',
 
+  // Customer login (OTP) Errors
+  LOGIN_REQUIRED: 'Please log in with your mobile number to continue.',
+  OTP_INVALID: 'That code is not correct. Please check and try again.',
+  OTP_EXPIRED: 'This code has expired. Please request a new one.',
+  OTP_TOO_MANY_ATTEMPTS: 'Too many wrong codes. Please request a new one.',
+  OTP_SEND_FAILED: 'Could not send the OTP. Please try again.',
+  otpResendWait: (seconds: number) =>
+    `Please wait ${seconds} seconds before requesting a new code.`,
+  OTP_HOURLY_LIMIT: 'Too many codes requested for this number. Try again in an hour.',
+  ENTER_VALID_OTP: 'Enter the 6-digit code',
+  ENTER_VALID_EMAIL: 'Enter a valid email',
+  ENTER_VALID_BIRTHDAY: 'Birthday must be a past date in YYYY-MM-DD format',
+  HOLD_NOT_YOURS: 'This hold belongs to a different mobile number',
+
   // Input Errors
   ENTER_VALID_NAME: 'Please provide a valid name',
+  NAME_LETTERS_ONLY: 'Name can only contain letters, spaces, dots, apostrophes and hyphens',
   ENTER_VALID_MOBILE: 'Please provide a valid 10-digit mobile number',
   INVALID_DATE: 'Date must be in YYYY-MM-DD format',
   INVALID_HOUR: 'Hour must be between 0 and 23',
@@ -94,6 +110,7 @@ export const ValidationMessages = Object.freeze({
   // Payment Errors
   PAYMENT_NOT_FOUND: 'Payment order not found',
   PAYMENT_SIGNATURE_INVALID: 'Payment verification failed',
+  PAYMENT_NOT_COMPLETED: 'The payment was not completed. No money has been taken.',
   PAYMENT_PROVIDER_ERROR: 'Payment provider error. Please try again.',
   PAYMENT_NOT_CONFIGURED: 'Online payments are not configured',
   WEBHOOK_SIGNATURE_INVALID: 'Invalid webhook signature',

@@ -6,8 +6,11 @@ IDs and timestamps will differ in your environment.
 
 - **Base URL:** `http://localhost:4000/api/v1` (production: `https://<your-domain>/api/v1`)
 - **Content type:** `application/json` for every request with a body
-- **Auth:** admin routes need `Authorization: Bearer <token>` from
-  [`POST /admin/auth/login`](#post-adminauthlogin). Public routes need no auth.
+- **Auth:** two kinds of Bearer token.
+  - **Customer token** from [`POST /visitors/otp/verify`](#post-visitorsotpverify) (SMS one-time
+    code). Needed for holds, bookings, payments and the visitor profile.
+  - **Staff token** from [`POST /admin/auth/login`](#post-adminauthlogin). Needed for `/admin/*`.
+  - Venue info, slots, offers and the price preview need no auth.
 
 ## About this document
 
@@ -33,13 +36,14 @@ If the code and this document ever disagree, treat it as a bug and report it.
 3. **Handle errors by HTTP status, and show `message` to the user.** All errors are
    `{ "success": false, "message": "...", "errors"?: [...] }`. The messages are written to be
    shown in the app as they are.
-4. **Store the admin `token`** and send `Authorization: Bearer <token>`. On **401**, clear the
-   token and go to the login screen. Change-password returns a **new** token, so replace the
-   stored one.
+4. **Store the token** (customer or staff) and send `Authorization: Bearer <token>`. On **401**,
+   clear it and show the login screen. Staff change-password returns a **new** token, so replace
+   the stored one. Customers never send their phone number in request bodies; the server takes it
+   from the token.
 5. **Don't calculate prices on the client.** Show the `price` object returned by
    `POST /bookings/price` and the booking endpoints.
-6. **Follow the flows in [Workflows](#workflows)**, especially hold → booking → payment for
-   customers, and walk-in → mark-paid / payment-failed at the counter.
+6. **Follow the flows in [Workflows](#workflows)**, especially OTP login → hold → booking →
+   payment for customers, and walk-in → mark-paid / payment-failed at the counter.
 
 ### Notes for AI agents
 
@@ -56,26 +60,27 @@ If the code and this document ever disagree, treat it as a bug and report it.
 
 ### Endpoint index
 
-Paths are relative to `/api/v1`, except the health checks. **Auth:** `-` public · `staff` any
-signed-in staff · `admin` admin role only.
+Paths are relative to `/api/v1`, except the health checks. **Auth:** `-` public · `customer`
+customer token (OTP login) · `staff` any signed-in staff · `admin` admin role only.
 
 | Method | Path | Auth | Purpose |
 | :--- | :--- | :--- | :--- |
 | GET | `/` · `/heartbeat` (server root) | - | Health checks |
-| POST | `/visitors` | - | Save customer name + mobile |
-| GET | `/visitors/me?phone=` | - | Look up a visitor |
+| POST | `/visitors/otp/send` | - | Send a 6-digit login code by SMS |
+| POST | `/visitors/otp/verify` | - | Check the code → customer token |
+| GET, PATCH | `/visitors/me` | customer | Signed-in customer's profile |
 | GET | `/venues` · `/venues/:id` | - | Venue, prices, pitches, rules |
 | GET | `/venues/:id/slots?date=&pitchId=` | - | Hourly slot grid |
 | GET | `/venues/:id/offers` | - | Active offer codes |
-| POST | `/holds` | - | Hold slots for 8 minutes |
-| DELETE | `/holds/:id` | - | Release a hold |
+| POST | `/holds` | customer | Hold slots for 8 minutes |
+| DELETE | `/holds/:id` | customer | Release your hold |
 | POST | `/bookings/price` | - | Price preview / check an offer |
-| POST | `/bookings` | - | Create a pending booking from a hold |
-| GET | `/bookings?phone=` · `/bookings/:id` | - | My bookings / one booking |
-| POST | `/bookings/:id/cancel` | - | Cancel (with refund policy) |
-| POST | `/bookings/:id/reschedule` | - | Move to a new date or time |
-| POST | `/payments/razorpay/order` | - | Create a Razorpay order |
-| POST | `/payments/razorpay/verify` | - | Confirm a payment from Checkout |
+| POST | `/bookings` | customer | Create a pending booking from a hold |
+| GET | `/bookings` · `/bookings/:id` | customer | My bookings / one of my bookings |
+| POST | `/bookings/:id/cancel` | customer | Cancel (with refund policy) |
+| POST | `/bookings/:id/reschedule` | customer | Move to a new date or time |
+| POST | `/payments/razorpay/order` | customer | Create a Razorpay order |
+| POST | `/payments/razorpay/verify` | customer | Confirm a payment from Checkout |
 | POST | `/payments/razorpay/webhook` | Razorpay | Razorpay server callback (not for the app) |
 | POST | `/admin/auth/login` | - | Email + password login |
 | POST | `/admin/auth/forgot-password` · `/reset-password` | - | Password reset by email |
@@ -108,7 +113,7 @@ signed-in staff · `admin` admin role only.
 - [Shared objects](#shared-objects): Booking, Price, Payment order, Staff
 - **Public (customer site)**
   - [Health](#health)
-  - [Visitors](#visitors)
+  - [Visitors & customer login](#visitors--customer-login)
   - [Venue, slots & offers](#venue-slots--offers)
   - [Holds](#holds)
   - [Bookings](#bookings)
@@ -277,7 +282,7 @@ Returned when a Razorpay order is created.
 {
   "id": "5b7a762e-d19e-46e1-a8cb-5c01974c0a8e",
   "name": "Venue Admin",
-  "email": "admin@riverside.example",
+  "email": "admin.rcb@yopmail.com",
   "role": "admin",
   "active": true,
   "lastLoginAt": "2026-11-21T09:56:05.681Z",
@@ -306,41 +311,108 @@ These two are served from the server root, not under `/api/v1`.
 "ok"
 ```
 
-## Visitors
+## Visitors & customer login
 
-A soft customer identity: name + mobile, with no password.
+Customers log in with their mobile number and a 6-digit code sent by SMS. There is no password.
+The first verified login creates the visitor.
 
-### `POST /visitors`
-
-Creates or updates a visitor by phone. The latest name wins.
+### `POST /visitors/otp/send`
 
 ```json
 // Request
-{ "name": "Uday Kotecha", "phone": "9999999999" }
+{ "phone": "9999999999" }
 
 // 200
 {
-  "id": "v-9999999999",
-  "name": "Uday Kotecha",
+  "message": "We sent a 6-digit code to your mobile number.",
   "phone": "9999999999",
-  "createdAt": "2026-11-21T09:56:05.368Z",
-  "lastSeenAt": "2026-11-21T09:56:05.368Z"
+  "expiresIn": 300,
+  "resendAfter": 30,
+  "devCode": "482913"
 }
+```
+
+| Field | Notes |
+| :--- | :--- |
+| `expiresIn` | Seconds the code works (5 minutes) |
+| `resendAfter` | Seconds before another code can be requested |
+| `devCode` | **Development only**: returned when the server is not in production and `SMS_PROVIDER=console`, so the flow can be tested without SMS. Never present in production |
+
+A new code replaces any unused earlier one. Login codes are not written to the admin SMS log.
+
+| Status | Message |
+| :--- | :--- |
+| 429 | `Please wait N seconds before requesting a new code.` |
+| 429 | `Too many codes requested for this number. Try again in an hour.` (5 per hour) |
+| 429 | `Too many requests, please try again later` (per-IP limit, 30 per 15 minutes) |
+| 502 | `Could not send the OTP. Please try again.` (SMS provider failed) |
+
+### `POST /visitors/otp/verify`
+
+```json
+// Request (name is optional; use it on first sign-up)
+{ "phone": "9999999999", "code": "482913", "name": "Uday Kotecha" }
+
+// 200
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "tokenType": "Bearer",
+  "expiresIn": 2592000,
+  "visitor": {
+    "id": "v-9999999999",
+    "name": "Uday Kotecha",
+    "phone": "9999999999",
+    "email": null,
+    "birthday": null,
+    "createdAt": "2026-11-21T09:56:05.368Z",
+    "lastSeenAt": "2026-11-21T09:56:05.368Z"
+  },
+  "needsName": false
+}
+```
+
+- Store `token` and send it as `Authorization: Bearer <token>` on customer routes. It lasts
+  30 days by default (`VISITOR_JWT_EXPIRES_IN`).
+- `needsName: true` means the visitor has no name yet: ask for one and save it with
+  `PATCH /visitors/me`.
+- A code works once. 5 wrong guesses burn it.
+
+| Status | Message |
+| :--- | :--- |
+| 400 | `That code is not correct. Please check and try again.` |
+| 400 | `This code has expired. Please request a new one.` (also after it was used) |
+| 400 | `Too many wrong codes. Please request a new one.` |
+
+### `GET /visitors/me`
+
+**Customer token.** Returns the visitor object above.
+
+### `PATCH /visitors/me`
+
+**Customer token.** Send any of these fields. `null` clears email or birthday. The phone cannot be
+changed (it is the login).
+
+```json
+// Request
+{ "name": "Uday K", "email": "uday@example.com", "birthday": "1995-04-10" }
+
+// 200: the updated visitor
 ```
 
 | Field | Rules |
 | :--- | :--- |
-| `name` | Required, 2–80 characters |
-| `phone` | Required, valid Indian mobile number |
+| `name` | 2–80 characters |
+| `email` | Valid email or `null` |
+| `birthday` | `YYYY-MM-DD` in the past, or `null` |
 
-### `GET /visitors/me?phone=9999999999`
+### Customer route errors
 
-Returns the visitor object above, or:
+Every customer route answers **401** without a valid customer token:
 
-```json
-// 404
-{ "success": false, "message": "Visitor not found" }
-```
+| Status | Message |
+| :--- | :--- |
+| 401 | `Please log in with your mobile number to continue.` (no token) |
+| 401 | `Session expired. Please log in again.` (bad, expired or staff token) |
 
 ## Venue, slots & offers
 
@@ -461,12 +533,13 @@ Seeded offers: `WELCOME20`, `WEEKDAY100`, `TEAM15`, `RIVER50`.
 ## Holds
 
 A hold reserves slots for **8 minutes** while the customer reviews and checks out.
+**Customer token required**: the customer logs in (OTP) before slots are held.
 
 ### `POST /holds`
 
 ```json
 // Request
-{ "venueId": "arena", "pitchId": "main", "date": "2026-11-22", "hours": [19, 20], "phone": "9999999999" }
+{ "venueId": "arena", "pitchId": "main", "date": "2026-11-22", "hours": [19, 20] }
 
 // 201
 {
@@ -485,7 +558,8 @@ A hold reserves slots for **8 minutes** while the customer reviews and checks ou
 | `pitchId` | Optional, defaults to the first pitch |
 | `date` | Required. From today to today + `advanceDays` |
 | `hours` | Required, **consecutive** hours; any order is accepted. Count between `minHours` and `maxHours`. Must not have started yet |
-| `phone` | Optional but recommended. A visitor holds one selection at a time: a new hold with the same phone replaces their previous hold. When set, `POST /bookings` must use the same phone |
+
+A customer holds one selection at a time: a new hold replaces their previous one.
 
 ```json
 // 409: any of the hours is already held or booked
@@ -505,8 +579,8 @@ outside opening hours`.
 
 ### `DELETE /holds/:holdId`
 
-Releases a hold, for example when the customer goes back to change slots. Returns **204** with no
-body.
+Releases your own hold, for example when the customer goes back to change slots. Returns **204**
+with no body (also when the hold was already gone or belongs to someone else).
 
 ## Bookings
 
@@ -554,7 +628,8 @@ Offer errors (400):
 
 ### `POST /bookings`
 
-Turns a hold into a booking with status **`pending`** (awaiting payment). The customer then has
+**Customer token.** Turns the customer's hold into a booking with status **`pending`** (awaiting
+payment). The mobile number comes from the token. The customer then has
 **15 minutes** to pay, and the timer restarts when a payment order is created.
 
 ```json
@@ -562,7 +637,6 @@ Turns a hold into a booking with status **`pending`** (awaiting payment). The cu
 {
   "holdId": "h_156ba150ae34",
   "customerName": "Uday Kotecha",
-  "customerPhone": "9999999999",
   "players": 10,
   "notes": "",
   "channel": "self",
@@ -588,8 +662,7 @@ Turns a hold into a booking with status **`pending`** (awaiting payment). The cu
 | Field | Rules |
 | :--- | :--- |
 | `holdId` | Required |
-| `customerName` | Required, 2–80 characters |
-| `customerPhone` | Required. Must match the hold's phone if the hold had one |
+| `customerName` | Optional, 2–80 characters. Defaults to the visitor's saved name |
 | `players` | Optional, 1–30 |
 | `notes` | Optional, up to 500 characters |
 | `channel` | Optional, only `"self"` (counter bookings use the admin API) |
@@ -600,22 +673,25 @@ Turns a hold into a booking with status **`pending`** (awaiting payment). The cu
 | 404 | `Hold not found` (also when the hold was already used) |
 | 410 | `Your hold has expired` (ask the customer to pick slots again) |
 | 403 | `This hold belongs to a different mobile number` |
+| 400 | `Please provide a valid name` (no name given and none saved) |
 
-### `GET /bookings?phone=9999999999`
+### `GET /bookings`
 
-The customer's bookings ("My bookings"), newest first. Returns an array of Booking objects.
+**Customer token.** The signed-in customer's bookings ("My bookings"), newest first. Returns an
+array of Booking objects.
 
 ### `GET /bookings/:id`
 
-A single Booking object. 404 `Booking not found` if it doesn't exist.
+**Customer token.** A single Booking object. 404 `Booking not found` if it doesn't exist, 403
+`Mobile number does not match this booking` if it belongs to someone else.
 
 ### `POST /bookings/:id/cancel`
 
-The phone number proves the caller owns the booking.
+**Customer token.** Only the customer who made the booking can cancel it.
 
 ```json
-// Request
-{ "phone": "9999999999", "reason": "Team members not available" }
+// Request: reason optional
+{ "reason": "Team members not available" }
 
 // 200: Booking object (relevant fields)
 {
@@ -645,12 +721,12 @@ booking refunds nothing and gives `refundAmount: null`. Reason suggestions from 
 
 ### `POST /bookings/:id/reschedule`
 
-Moves the booking to a new date and start hour. The duration and price stay the same. Customers
+**Customer token.** Moves the booking to a new date and start hour. The duration and price stay the same. Customers
 can reschedule until **2 hours** before the original start.
 
 ```json
 // Request
-{ "phone": "9999999999", "date": "2026-11-22", "startHour": 20 }
+{ "date": "2026-11-22", "startHour": 20 }
 
 // 200: Booking object with the new time
 { "startHour": 20, "slotLabel": "8 PM - 10 PM", "...": "see Booking" }
@@ -664,7 +740,7 @@ rescheduled` and 400 `Pick a different date or time`.
 
 ### `POST /payments/razorpay/order`
 
-Creates a Razorpay order for a `pending` booking.
+**Customer token.** Creates a Razorpay order for the customer's `pending` booking.
 
 ```json
 // Request
@@ -689,7 +765,7 @@ is not `pending`.
 
 ### `POST /payments/razorpay/verify`
 
-Call this from the Razorpay Checkout success handler. On success the booking becomes `upcoming`,
+**Customer token.** Call this from the Razorpay Checkout success handler. On success the booking becomes `upcoming`,
 and the confirmation SMS goes to the customer and the admin. Calling it twice is safe.
 
 ```json
@@ -709,6 +785,7 @@ and the confirmation SMS goes to the customer and the admin. Calling it twice is
 | :--- | :--- |
 | 400 | `Payment verification failed` (bad signature) |
 | 404 | `Payment order not found` (order id doesn't belong to this booking) |
+| 403 | `Mobile number does not match this booking` |
 | 409 | `That slot is not available.` (paid after the 15-minute window and someone else took the slot; the payment is refunded automatically) |
 
 ### `POST /payments/razorpay/webhook`
@@ -758,7 +835,7 @@ Endpoints marked **admin only** return 403 for staff.
 
 ```json
 // Request
-{ "email": "admin@riverside.example", "password": "Admin@12345" }
+{ "email": "admin.rcb@yopmail.com", "password": "Admin@123" }
 
 // 200
 {
@@ -769,7 +846,7 @@ Endpoints marked **admin only** return 403 for staff.
   "staff": {
     "id": "5b7a762e-d19e-46e1-a8cb-5c01974c0a8e",
     "name": "Venue Admin",
-    "email": "admin@riverside.example",
+    "email": "admin.rcb@yopmail.com",
     "role": "admin",
     "active": true,
     "lastLoginAt": "2026-11-21T09:56:05.681Z",
@@ -780,6 +857,9 @@ Endpoints marked **admin only** return 403 for staff.
 ```
 
 - The email is case-insensitive.
+- On every start the server creates the admin from `ADMIN_SEED_EMAIL` / `ADMIN_SEED_PASSWORD`
+  (default `admin.rcb@yopmail.com` / `Admin@123`) if that account does not exist yet. An existing
+  account is never changed, so a password changed later stays changed.
 - `expiresIn` is in seconds (24 h by default, set by `JWT_EXPIRES_IN`).
 - Rate limited to 10 requests per 15 minutes per IP. This limit is shared with forgot-password
   and reset-password.
@@ -802,7 +882,7 @@ new one.
 
 ```json
 // Request
-{ "currentPassword": "Admin@12345", "newPassword": "Admin@67890" }
+{ "currentPassword": "Admin@123", "newPassword": "Admin@67890" }
 
 // 200: same shape as login
 { "token": "eyJhbGciOiJIUzI1NiIs...", "tokenType": "Bearer", "expiresIn": 86400, "staffId": "...", "staff": { "...": "..." } }
@@ -823,7 +903,7 @@ account exists.
 
 ```json
 // Request
-{ "email": "admin@riverside.example" }
+{ "email": "admin.rcb@yopmail.com" }
 
 // 200
 { "message": "If an account exists for this email, a reset link has been sent." }
@@ -1175,6 +1255,7 @@ Visitors who entered a name and mobile, plus everyone with a booking. Most recen
     "id": "v-9876543211",
     "name": "UPI Guest",
     "phone": "9876543211",
+    "email": null,
     "count": 1,
     "totalSpent": 920,
     "firstSeen": "2026-11-21T09:56:05.966Z",
@@ -1185,7 +1266,7 @@ Visitors who entered a name and mobile, plus everyone with a booking. Most recen
 ```
 
 `count` and `totalSpent` only include confirmed bookings (`upcoming` + `completed`). `search`
-matches name or phone.
+matches name or phone. `email` is what the customer saved in their profile (or `null`).
 
 ### `GET /admin/customers/:phone`
 
@@ -1345,9 +1426,10 @@ The URL for the "Counter QR" that customers scan to book and pay online themselv
 **1. Customer self-booking (website)**
 
 ```
-POST /visitors                         save name + mobile
 GET  /venues/arena                     prices, pitches, rules
 GET  /venues/arena/slots?date=...      slot grid
+POST /visitors/otp/send                SMS code             (when they continue)
+POST /visitors/otp/verify              → customer token
 POST /holds                            8-minute hold        → holdId
 POST /bookings/price                   review screen (optional offer code)
 POST /bookings                         pending booking      → id
@@ -1389,10 +1471,10 @@ POST /admin/bookings/:id/payment-failed          failure → cancelled, slot fre
 | :--- | :--- |
 | 400 | Validation error or a business rule (bad date, offer not valid, wrong current password, …) |
 | 401 | Not signed in, bad/expired token, session revoked, or wrong email/password |
-| 403 | Signed in but not allowed (staff on an admin-only route, phone doesn't own the booking, inactive account) |
+| 403 | Signed in but not allowed (staff on an admin-only route, customer doesn't own the booking, inactive account) |
 | 404 | Not found (`Booking not found`, `Hold not found`, `Route not found or wrong API method`, …) |
 | 409 | Conflict: slot taken, booking not in the right state, duplicate email/offer code |
 | 410 | `Your hold has expired` |
-| 429 | Rate limited, or account locked after failed logins |
+| 429 | Rate limited, account locked after failed logins, or OTP requested too often |
 | 500 | Unexpected server error (`Internal server error`) |
 | 502 / 503 | Payment provider error / online payments not configured (production without Razorpay keys) |

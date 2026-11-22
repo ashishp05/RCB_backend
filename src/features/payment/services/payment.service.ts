@@ -13,7 +13,7 @@ import {
   VerifyPaymentInput,
 } from '../types/payment.types';
 
-const CAPTURE_EVENTS = new Set(['payment.captured', 'order.paid']);
+const CAPTURE_EVENTS = new Set(['payment.authorized', 'payment.captured', 'order.paid']);
 
 export class PaymentService {
   constructor(
@@ -22,11 +22,24 @@ export class PaymentService {
     private readonly razorpay: RazorpayClient,
   ) {}
 
-  async createOrder(input: CreateOrderInput): Promise<PaymentOrderDto> {
+  // Customer checkout: the signed-in visitor must own the booking.
+  async createOrder(input: CreateOrderInput, phone: string): Promise<PaymentOrderDto> {
+    await this.bookingService.getOwned(input.bookingId, phone);
     return this.bookingService.createPaymentOrder(input.bookingId, input.method);
   }
 
-  async verify(input: VerifyPaymentInput): Promise<BookingDto> {
+  async verify(input: VerifyPaymentInput, phone: string): Promise<BookingDto> {
+    await this.bookingService.getOwned(input.bookingId, phone);
+    return this.verifyCheckout(input);
+  }
+
+  // Counter desk: Razorpay Checkout opened on the staff screen (UPI QR / card).
+  async verifyForStaff(input: VerifyPaymentInput): Promise<BookingDto> {
+    await this.bookingService.getById(input.bookingId);
+    return this.verifyCheckout(input);
+  }
+
+  private async verifyCheckout(input: VerifyPaymentInput): Promise<BookingDto> {
     const payment = await this.paymentRepository.findByOrderId(input.razorpayOrderId);
     if (!payment || payment.bookingId !== input.bookingId) {
       throw new ApiError(StatusCodes.NOT_FOUND, ValidationMessages.PAYMENT_NOT_FOUND);
@@ -41,7 +54,12 @@ export class PaymentService {
       throw new ApiError(StatusCodes.BAD_REQUEST, ValidationMessages.PAYMENT_SIGNATURE_INVALID);
     }
 
-    return this.capture(payment.orderId, input.razorpayPaymentId, payment.bookingId);
+    return this.capture(
+      payment.orderId,
+      input.razorpayPaymentId,
+      payment.bookingId,
+      payment.amountPaise,
+    );
   }
 
   // Webhooks are verified on the raw body and processed idempotently (same path as verify).
@@ -57,8 +75,8 @@ export class PaymentService {
     if (!payment) return;
 
     if (CAPTURE_EVENTS.has(event.event)) {
-      await this.capture(payment.orderId, entity.id, payment.bookingId).catch(error =>
-        console.error(`Webhook capture failed for ${payment.bookingId}`, error),
+      await this.capture(payment.orderId, entity.id, payment.bookingId, payment.amountPaise).catch(
+        error => console.error(`Webhook capture failed for ${payment.bookingId}`, error),
       );
     } else if (event.event === 'payment.failed') {
       // The visitor may retry inside Checkout; the pending booking expires on its own.
@@ -66,12 +84,29 @@ export class PaymentService {
     }
   }
 
-  // The payment kind was set when the order was created, so only the status changes here.
+  // Confirms with Razorpay that the payment belongs to this order for the full amount, captures
+  // it if the account uses manual capture, then confirms the booking. The payment kind was set
+  // when the order was created, so only the status changes here.
   private async capture(
     orderId: string,
     paymentId: string,
     bookingId: string,
+    amountPaise: number,
   ): Promise<BookingDto> {
+    if (!this.razorpay.isMock() && !paymentId.startsWith('pay_mock')) {
+      let remote = await this.razorpay.fetchPayment(paymentId);
+      if (remote.order_id !== orderId || remote.amount !== amountPaise) {
+        await this.paymentRepository.markFailed(orderId, paymentId);
+        throw new ApiError(StatusCodes.BAD_REQUEST, ValidationMessages.PAYMENT_SIGNATURE_INVALID);
+      }
+      if (remote.status === 'authorized') {
+        remote = await this.razorpay.capturePayment(paymentId, amountPaise);
+      }
+      if (remote.status !== 'captured') {
+        await this.paymentRepository.markFailed(orderId, paymentId);
+        throw new ApiError(StatusCodes.BAD_REQUEST, ValidationMessages.PAYMENT_NOT_COMPLETED);
+      }
+    }
     await this.paymentRepository.markCaptured(orderId, paymentId);
     return this.bookingService.confirm(bookingId);
   }

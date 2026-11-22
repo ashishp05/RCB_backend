@@ -109,13 +109,29 @@ model VenueSettings {
 }
 
 model Visitor {
-  id         String   @id
+  id         String    @id
   name       String
-  phone      String   @unique
-  createdAt  DateTime @default(now())
-  lastSeenAt DateTime @default(now())
+  phone      String    @unique
+  email      String?
+  birthday   DateTime? @db.Date
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
 
   @@map("visitors")
+}
+
+// One-time login codes for the customer site. Only an HMAC of the code is stored.
+model OtpCode {
+  id         String    @id @default(uuid())
+  phone      String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([phone, createdAt])
+  @@map("otp_codes")
 }
 
 model StaffUser {

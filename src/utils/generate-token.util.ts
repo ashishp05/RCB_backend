@@ -11,9 +11,14 @@ export interface TokenPayload {
   tokenVersion?: number;
 }
 
-export const generateToken = (userId: string, role = 'user', tokenVersion?: number): string =>
+export const generateToken = (
+  userId: string,
+  role = 'user',
+  tokenVersion?: number,
+  expiresIn: string = env.JWT_EXPIRES_IN,
+): string =>
   jwt.sign({ userId, role, ...(tokenVersion !== undefined && { tokenVersion }) }, secret, {
-    expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+    expiresIn: expiresIn as jwt.SignOptions['expiresIn'],
   });
 
 // Throws when the token is malformed, tampered with or expired.

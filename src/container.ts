@@ -20,6 +20,7 @@ import { VenueController } from './features/venue/controllers/venue.controller';
 import { VenueRepository } from './features/venue/repositories/venue.repository';
 import { VenueService } from './features/venue/services/venue.service';
 import { VisitorController } from './features/visitor/controllers/visitor.controller';
+import { createVisitorGuard } from './features/visitor/middleware/visitor-auth.middleware';
 import { VisitorRepository } from './features/visitor/repositories/visitor.repository';
 import { VisitorService } from './features/visitor/services/visitor.service';
 import { razorpayClient } from './utils/razorpay.util';
@@ -36,8 +37,9 @@ const smsRepository = new SmsRepository(prisma);
 const staffRepository = new StaffRepository(prisma);
 
 const venueService = new VenueService(venueRepository);
-const visitorService = new VisitorService(visitorRepository);
-const notificationService = new NotificationService(smsRepository, createSmsProvider());
+const smsProvider = createSmsProvider();
+const visitorService = new VisitorService(visitorRepository, smsProvider);
+const notificationService = new NotificationService(smsRepository, smsProvider);
 const paymentGateway = new PaymentGatewayService(paymentRepository, razorpayClient);
 const bookingService = new BookingService(
   bookingRepository,
@@ -57,6 +59,8 @@ const adminDashboardService = new AdminDashboardService(
 
 export const container = {
   bookingRepository,
+  visitorService,
+  visitorGuard: createVisitorGuard(visitorRepository),
   venueController: new VenueController(venueService),
   visitorController: new VisitorController(visitorService),
   bookingController: new BookingController(bookingService),

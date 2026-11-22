@@ -52,6 +52,67 @@ export class NotificationService {
     }
   }
 
+  // Confirmed booking cancelled (by the customer or staff): refund details for the customer and a
+  // heads-up for the venue. Never throws.
+  async sendBookingCancelled(booking: BookingDto): Promise<void> {
+    const date = formatDisplayDate(booking.date);
+    const refund = booking.refundAmount
+      ? formatRupees(Math.round(booking.refundAmount * 100))
+      : null;
+    const variables = {
+      booking_id: booking.id,
+      date,
+      slot: booking.slotLabel,
+      refund: refund ?? 'Rs 0',
+      name: booking.customerName,
+      phone: booking.customerPhone,
+      venue: booking.venueName,
+    };
+    const customerBody =
+      `Your booking ${booking.id} at ${booking.venueName} (${date}, ${booking.slotLabel}) is cancelled. ` +
+      (refund
+        ? `${refund} will be refunded to your original payment method in 3-5 working days.`
+        : 'No refund applies to this cancellation.');
+    const adminBody =
+      `Cancelled ${booking.id}: ${booking.customerName} (${booking.customerPhone}), ${date}, ` +
+      `${booking.slotLabel}. Refund ${refund ?? 'Rs 0'}. Slot is free again.`;
+    await this.notify(
+      booking.id,
+      customerBody,
+      adminBody,
+      booking.customerPhone,
+      env.MSG91_TEMPLATE_CANCELLED,
+      variables,
+    );
+  }
+
+  async sendBookingRescheduled(booking: BookingDto, previousSlot: string): Promise<void> {
+    const date = formatDisplayDate(booking.date);
+    const variables = {
+      booking_id: booking.id,
+      date,
+      slot: booking.slotLabel,
+      previous: previousSlot,
+      name: booking.customerName,
+      phone: booking.customerPhone,
+      venue: booking.venueName,
+    };
+    const customerBody =
+      `Your booking ${booking.id} at ${booking.venueName} is moved to ${date}, ` +
+      `${booking.slotLabel} (${booking.pitchName}). Your QR stays the same.`;
+    const adminBody =
+      `Rescheduled ${booking.id}: ${booking.customerName} (${booking.customerPhone}) from ` +
+      `${previousSlot} to ${date}, ${booking.slotLabel}, ${booking.pitchName}.`;
+    await this.notify(
+      booking.id,
+      customerBody,
+      adminBody,
+      booking.customerPhone,
+      env.MSG91_TEMPLATE_RESCHEDULED,
+      variables,
+    );
+  }
+
   async list(query: SmsQuery) {
     return this.smsRepository.findMany(
       {
@@ -62,6 +123,25 @@ export class NotificationService {
       query.limit,
       query.skip,
     );
+  }
+
+  // Customer message + venue admin message (when ADMIN_NOTIFY_PHONE is set). MSG91 uses one DLT
+  // template per event for both recipients; other providers send the plain text.
+  private async notify(
+    bookingId: string,
+    customerBody: string,
+    adminBody: string,
+    customerPhone: string,
+    templateId: string | undefined,
+    variables: Record<string, string>,
+  ): Promise<void> {
+    await this.send('customer', customerPhone, customerBody, bookingId, { templateId, variables });
+    if (env.ADMIN_NOTIFY_PHONE) {
+      await this.send('admin', env.ADMIN_NOTIFY_PHONE, adminBody, bookingId, {
+        templateId,
+        variables,
+      });
+    }
   }
 
   private async send(

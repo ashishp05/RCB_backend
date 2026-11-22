@@ -11,11 +11,19 @@ export const phoneField = z
   .refine(isValidIndianMobile, ValidationMessages.ENTER_VALID_MOBILE)
   .transform(normalizeIndianMobile);
 
+// Letters (any language), spaces and . ' - only; collapses repeated spaces.
+const NAME_PATTERN = /^\p{L}[\p{L}\p{M} .'-]*$/u;
 export const nameField = z
   .string()
   .trim()
-  .min(2, ValidationMessages.ENTER_VALID_NAME)
-  .max(80, ValidationMessages.max('Name', 80));
+  .transform(value => value.replace(/\s+/g, ' '))
+  .pipe(
+    z
+      .string()
+      .min(2, ValidationMessages.ENTER_VALID_NAME)
+      .max(80, ValidationMessages.max('Name', 80))
+      .regex(NAME_PATTERN, ValidationMessages.NAME_LETTERS_ONLY),
+  );
 
 export const dateField = z
   .string()
@@ -39,13 +47,16 @@ export const hoursField = z
     ValidationMessages.HOURS_NOT_CONSECUTIVE,
   );
 
-export const offerCodeField = z
-  .string()
-  .trim()
-  .max(32)
-  .transform(code => code.toUpperCase())
-  .optional()
-  .or(z.literal('').transform(() => undefined));
+export const offerCodeField = z.preprocess(
+  value => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z
+    .string()
+    .trim()
+    .max(32, ValidationMessages.max('Offer code', 32))
+    .regex(/^[A-Za-z0-9_-]+$/, ValidationMessages.INVALID_OFFER)
+    .transform(code => code.toUpperCase())
+    .optional(),
+);
 
 // Contract values are snake_case (upi_qr); the Flutter enum names (upiQr) are accepted too.
 const PAYMENT_KIND_ALIASES: Record<string, string> = {

@@ -1,14 +1,25 @@
 import { Router } from 'express';
 
 import { container } from '../../../container';
-import { validateQuery, validateRequest } from '../../../middleware/validation.middleware';
-import { upsertVisitorSchema, visitorLookupQuerySchema } from '../schemas/visitor.schema';
+import { otpRateLimiter } from '../../../middleware/security.middleware';
+import { validateRequest } from '../../../middleware/validation.middleware';
+import { sendOtpSchema, updateProfileSchema, verifyOtpSchema } from '../schemas/visitor.schema';
 
-const { visitorController } = container;
+const { visitorController, visitorGuard } = container;
 
 const router = Router();
 
-router.post('/', validateRequest(upsertVisitorSchema), visitorController.upsert);
-router.get('/me', validateQuery(visitorLookupQuerySchema), visitorController.me);
+// Customer login by SMS code (rate limited per IP; per-number limits live in the service).
+router.post('/otp/send', otpRateLimiter, validateRequest(sendOtpSchema), visitorController.sendOtp);
+router.post(
+  '/otp/verify',
+  otpRateLimiter,
+  validateRequest(verifyOtpSchema),
+  visitorController.verifyOtp,
+);
+
+// Signed in
+router.get('/me', visitorGuard, visitorController.me);
+router.patch('/me', visitorGuard, validateRequest(updateProfileSchema), visitorController.updateMe);
 
 export default router;

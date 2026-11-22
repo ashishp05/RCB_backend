@@ -11,6 +11,13 @@ export const createOrderSchema = z.object({
 
 export const paymentOrderMethodSchema = z.object({ method: onlinePaymentMethod });
 
+// Counter desk: the booking id comes from the URL.
+export const staffVerifyPaymentSchema = z.object({
+  razorpayOrderId: z.string().trim().min(1),
+  razorpayPaymentId: z.string().trim().min(1),
+  razorpaySignature: z.string().trim().min(1),
+});
+
 export const verifyPaymentSchema = z.object({
   bookingId: z.string().trim().min(1),
   razorpayOrderId: z.string().trim().min(1),
