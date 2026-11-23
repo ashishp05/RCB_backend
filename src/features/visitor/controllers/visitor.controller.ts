@@ -2,10 +2,19 @@ import { Request, Response } from 'express';
 
 import { sendData } from '../../../utils/response.util';
 import { VisitorService } from '../services/visitor.service';
-import { SendOtpInput, UpdateProfileInput, VerifyOtpInput } from '../types/visitor.types';
+import {
+  SendOtpInput,
+  SimpleLoginInput,
+  UpdateProfileInput,
+  VerifyOtpInput,
+} from '../types/visitor.types';
 
 export class VisitorController {
   constructor(private readonly visitorService: VisitorService) {}
+
+  simpleLogin = async (req: Request<{}, {}, SimpleLoginInput>, res: Response): Promise<void> => {
+    sendData(res, await this.visitorService.simpleLogin(req.body));
+  };
 
   sendOtp = async (req: Request<{}, {}, SendOtpInput>, res: Response): Promise<void> => {
     sendData(res, await this.visitorService.sendOtp(req.body.phone));

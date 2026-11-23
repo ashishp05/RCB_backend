@@ -8,6 +8,7 @@ export const envSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().default('1d'),
   VISITOR_JWT_EXPIRES_IN: z.string().default('30d'),
+  CUSTOMER_LOGIN_MODE: z.enum(['simple', 'otp']).default('simple'),
   WHITE_LIST_URLS: z
     .string()
     .transform(value => value.split(',').map(url => url.trim()))

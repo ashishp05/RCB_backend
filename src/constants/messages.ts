@@ -58,6 +58,7 @@ export const ValidationMessages = Object.freeze({
 
   // Customer login (OTP) Errors
   LOGIN_REQUIRED: 'Please log in with your mobile number to continue.',
+  SIMPLE_LOGIN_DISABLED: 'Please log in with the code sent to your mobile number.',
   OTP_INVALID: 'That code is not correct. Please check and try again.',
   OTP_EXPIRED: 'This code has expired. Please request a new one.',
   OTP_TOO_MANY_ATTEMPTS: 'Too many wrong codes. Please request a new one.',

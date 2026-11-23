@@ -3,10 +3,12 @@ import { z } from 'zod';
 import {
   customersQuerySchema,
   sendOtpSchema,
+  simpleLoginSchema,
   updateProfileSchema,
   verifyOtpSchema,
 } from '../schemas/visitor.schema';
 
+export type SimpleLoginInput = z.infer<typeof simpleLoginSchema>;
 export type SendOtpInput = z.infer<typeof sendOtpSchema>;
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

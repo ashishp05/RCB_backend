@@ -66,6 +66,7 @@ customer token (OTP login) · `staff` any signed-in staff · `admin` admin role 
 | Method | Path | Auth | Purpose |
 | :--- | :--- | :--- | :--- |
 | GET | `/` · `/heartbeat` (server root) | - | Health checks |
+| POST | `/visitors/login` | - | Log in with name + mobile (when `CUSTOMER_LOGIN_MODE=simple`) |
 | POST | `/visitors/otp/send` | - | Send a 6-digit login code by SMS |
 | POST | `/visitors/otp/verify` | - | Check the code → customer token |
 | GET, PATCH | `/visitors/me` | customer | Signed-in customer's profile |
@@ -313,8 +314,27 @@ These two are served from the server root, not under `/api/v1`.
 
 ## Visitors & customer login
 
-Customers log in with their mobile number and a 6-digit code sent by SMS. There is no password.
+Customers log in with their name and mobile number (`CUSTOMER_LOGIN_MODE=simple`), or with their
+mobile number and a 6-digit code sent by SMS (`CUSTOMER_LOGIN_MODE=otp`). There is no password.
 The first verified login creates the visitor.
+
+### `POST /visitors/login`
+
+Name + mobile login with **no SMS code**. Only works when the server has
+`CUSTOMER_LOGIN_MODE=simple` (the default); with `otp` it answers 403
+`Please log in with the code sent to your mobile number.` and the app should use the OTP routes below.
+Creates the visitor on first login and updates the saved name on later logins.
+
+```json
+// Request
+{ "name": "Uday Kotecha", "phone": "9999999999" }
+
+// 200: same session object as POST /visitors/otp/verify
+{ "token": "eyJhbGciOiJIUzI1NiIs...", "tokenType": "Bearer", "expiresIn": 2592000, "visitor": { "...": "..." }, "needsName": false }
+```
+
+Anyone who knows a mobile number can sign in as that customer in this mode, so switch to `otp`
+once SMS is set up.
 
 ### `POST /visitors/otp/send`
 

@@ -5,6 +5,9 @@ import { ValidationMessages } from '../../../constants/messages';
 import { isValidDateString, todayInVenue } from '../../../utils/time.util';
 import { nameField, phoneField } from '../../../utils/validators.util';
 
+// Simple login (CUSTOMER_LOGIN_MODE=simple): name + mobile, no SMS code.
+export const simpleLoginSchema = z.object({ phone: phoneField, name: nameField });
+
 export const sendOtpSchema = z.object({ phone: phoneField });
 
 export const verifyOtpSchema = z.object({

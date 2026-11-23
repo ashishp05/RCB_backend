@@ -15,6 +15,7 @@ import {
   CustomerDto,
   CustomersQuery,
   OtpSentDto,
+  SimpleLoginInput,
   UpdateProfileInput,
   VerifyOtpInput,
   VisitorDto,
@@ -126,7 +127,19 @@ export class VisitorService {
       throw new ApiError(StatusCodes.BAD_REQUEST, ValidationMessages.OTP_EXPIRED);
     }
 
-    const visitor = await this.visitorRepository.touch(input.phone, input.name);
+    return this.startSession(input.phone, input.name);
+  }
+
+  // Name + mobile login without an SMS code. Only when CUSTOMER_LOGIN_MODE=simple.
+  async simpleLogin(input: SimpleLoginInput): Promise<VisitorSessionDto> {
+    if (env.CUSTOMER_LOGIN_MODE !== 'simple') {
+      throw new ApiError(StatusCodes.FORBIDDEN, ValidationMessages.SIMPLE_LOGIN_DISABLED);
+    }
+    return this.startSession(input.phone, input.name);
+  }
+
+  private async startSession(phone: string, name: string | undefined): Promise<VisitorSessionDto> {
+    const visitor = await this.visitorRepository.touch(phone, name);
     const token = generateToken(
       visitor.id,
       CUSTOMER_AUTH.TOKEN_ROLE,
